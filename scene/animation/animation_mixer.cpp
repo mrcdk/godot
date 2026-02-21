@@ -33,7 +33,10 @@
 
 #include "core/config/engine.h"
 #include "core/config/project_settings.h"
+#include "core/object/object.h"
+#include "core/os/memory.h"
 #include "core/string/string_name.h"
+#include "core/variant/variant.h"
 #include "scene/2d/audio_stream_player_2d.h"
 #include "scene/animation/animation_player.h"
 #include "scene/audio/audio_stream_player.h"
@@ -689,6 +692,8 @@ bool AnimationMixer::_update_caches() {
 				track = track_cache.get(thash);
 			}
 
+			// TODO Should events not delete the cache?
+
 			// If not valid, delete track.
 			if (track && (track->type != track_cache_type || ObjectDB::get_instance(track->object_id) == nullptr)) {
 				playing_caches.erase(track);
@@ -700,13 +705,18 @@ bool AnimationMixer::_update_caches() {
 			if (!track) {
 				Ref<Resource> resource;
 				Vector<StringName> leftover_path;
+				Node *child;
 
-				Node *child = parent->get_node_and_resource(path, resource, leftover_path);
-				if (!child) {
-					if (check_path) {
-						WARN_PRINT_ED(mixer_name + ": '" + String(E) + "', couldn't resolve track:  '" + String(path) + "'. This warning can be disabled in Project Settings.");
+				if (track_src_type == Animation::TYPE_EVENT) {
+					// Animation events don't use Nodes or Resources
+				} else {
+					child = parent->get_node_and_resource(path, resource, leftover_path);
+					if (!child) {
+						if (check_path) {
+							WARN_PRINT_ED(mixer_name + ": '" + String(E) + "', couldn't resolve track:  '" + String(path) + "'. This warning can be disabled in Project Settings.");
+						}
+						continue;
 					}
-					continue;
 				}
 
 				switch (track_src_type) {
@@ -897,6 +907,11 @@ bool AnimationMixer::_update_caches() {
 
 						track = track_animation;
 
+					} break;
+					case Animation::TYPE_EVENT: {
+						TrackCacheEvent *track_event = memnew(TrackCacheEvent);
+
+						track = track_event;
 					} break;
 					default: {
 						ERR_PRINT("Animation corrupted (invalid track type).");
@@ -1838,6 +1853,26 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 						}
 					}
 				} break;
+				case Animation::TYPE_EVENT: {
+					if (p_update_only || Math::is_zero_approx(blend)) {
+						continue;
+					}
+					if (seeked) {
+						int idx = a->track_find_key(i, time, is_external_seeking ? Animation::FIND_MODE_NEAREST : Animation::FIND_MODE_EXACT, true);
+						if (idx < 0) {
+							continue;
+						}
+						StringName event = a->event_track_get_key_event(i, idx);
+						emit_signal(SNAME("animation_event_triggered"), event, blend);
+					} else {
+						List<int> indices;
+						a->track_get_key_indices_in_range(i, time, delta, start, end, &indices, looped_flag);
+						for (int &F : indices) {
+							StringName event = a->event_track_get_key_event(i, F);
+							emit_signal(SNAME("animation_event_triggered"), event, blend);
+						}
+					}
+				} break;
 			}
 		}
 	}
@@ -2477,6 +2512,7 @@ void AnimationMixer::_bind_methods() {
 	ADD_SIGNAL(MethodInfo(SNAME("animation_libraries_updated")));
 	ADD_SIGNAL(MethodInfo(SNAME("animation_finished"), PropertyInfo(Variant::STRING_NAME, "anim_name")));
 	ADD_SIGNAL(MethodInfo(SNAME("animation_started"), PropertyInfo(Variant::STRING_NAME, "anim_name")));
+	ADD_SIGNAL(MethodInfo(SNAME("animation_event_triggered"), PropertyInfo(Variant::STRING_NAME, "event"), PropertyInfo(Variant::FLOAT, "weight")));
 	ADD_SIGNAL(MethodInfo(SNAME("caches_cleared")));
 	ADD_SIGNAL(MethodInfo(SNAME("mixer_applied")));
 	ADD_SIGNAL(MethodInfo(SNAME("mixer_updated"))); // For updating dummy player.
@@ -2553,7 +2589,8 @@ AnimationMixer::TrackCache *AnimatedValuesBackup::get_cache_copy(AnimationMixer:
 		}
 
 		case Animation::TYPE_METHOD:
-		case Animation::TYPE_ANIMATION: {
+		case Animation::TYPE_ANIMATION:
+		case Animation::TYPE_EVENT: {
 			// Nothing to do here.
 		} break;
 	}

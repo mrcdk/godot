@@ -30,6 +30,8 @@
 
 #include "animation_track_editor_plugins.h"
 
+#include "core/math/math_defs.h"
+#include "core/string/print_string.h"
 #include "editor/audio/audio_stream_preview.h"
 #include "editor/editor_string_names.h"
 #include "editor/editor_undo_redo_manager.h"
@@ -39,7 +41,9 @@
 #include "scene/2d/sprite_2d.h"
 #include "scene/3d/sprite_3d.h"
 #include "scene/animation/animation_player.h"
+#include "scene/resources/text_line.h"
 #include "servers/audio/audio_stream.h"
+#include "servers/text/text_server.h"
 
 /// BOOL ///
 int AnimationTrackEditBool::get_key_height() const {
@@ -1338,6 +1342,86 @@ void AnimationTrackEditTypeAnimation::set_node(Object *p_object) {
 	id = p_object->get_instance_id();
 }
 
+////////////////////////
+
+/// EVENT ///
+
+int AnimationTrackEditTypeEvent::get_key_height() const {
+	Ref<Font> font = get_theme_font(SceneStringName(font), SNAME("Label"));
+	int font_size = get_theme_font_size(SceneStringName(font_size), SNAME("Label"));
+	return font->get_height(font_size);
+}
+
+Rect2 AnimationTrackEditTypeEvent::get_key_rect(int p_index, float p_pixels_sec) {
+	Ref<Font> font = get_theme_font(SceneStringName(font), SNAME("Label"));
+	int font_size = get_theme_font_size(SceneStringName(font_size), SNAME("Label"));
+	int height = font->get_height(font_size);
+	int width = height;
+
+	if (!get_editor()->is_function_name_pressed()) {
+		StringName event = get_animation()->event_track_get_key_event(get_track(), p_index);
+		Size2 size = font->get_string_size(event, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size);
+		width = size.x + 8;
+	}
+
+	return Rect2(0, 0, width, height);
+}
+
+bool AnimationTrackEditTypeEvent::is_key_selectable_by_distance() const {
+	return true;
+}
+
+void AnimationTrackEditTypeEvent::draw_key(int p_index, float p_pixels_sec, int p_x, bool p_selected, int p_clip_left, int p_clip_right) {
+	// Color color = get_animation()->event_track_get_key_event(get_track(), p_index);
+	StringName text = get_animation()->event_track_get_key_event(get_track(), p_index);
+	Color bg_color = Color(1, 1, 1, 1);
+
+	Ref<Font> font = get_theme_font(SceneStringName(font), SNAME("Label"));
+	int font_size = get_theme_font_size(SceneStringName(font_size), SNAME("Label"));
+	Color font_color = get_theme_color(SceneStringName(font_color), SNAME("Label"));
+	font_color = bg_color.inverted();
+	font_color.a = 0.5;
+	int rect_height = font->get_height(font_size);
+	int rect_width = rect_height;
+	int max_text_width = 0;
+	Size2 text_size;
+
+	if (!get_editor()->is_function_name_pressed() && !text.is_empty()) {
+		text_size = font->get_string_size(text);
+		max_text_width = MAX(0, p_clip_right - p_x - 8);
+		rect_width = MAX(2, MIN(text_size.x + 8, p_clip_right - p_x - 2));
+	}
+
+	Rect2 rect(Vector2(p_x, int(get_size().height - rect_height) / 2), Size2(rect_width, rect_height));
+
+	draw_rect_clipped(Rect2(rect.position, rect.size / 2), Color(0.4, 0.4, 0.4));
+	draw_rect_clipped(Rect2(rect.position + rect.size / 2, rect.size / 2), Color(0.4, 0.4, 0.4));
+	draw_rect_clipped(Rect2(rect.position + Vector2(rect.size.x / 2, 0), rect.size / 2), Color(0.6, 0.6, 0.6));
+	draw_rect_clipped(Rect2(rect.position + Vector2(0, rect.size.y / 2), rect.size / 2), Color(0.6, 0.6, 0.6));
+	draw_rect_clipped(rect, bg_color);
+
+	if (max_text_width > 0) {
+		text_buf->set_width(max_text_width);
+		text_buf->clear();
+		text_buf->add_string(text, font, font_size);
+		text_buf->draw(get_canvas_item(), Vector2(p_x + 4, int(get_size().height - text_size.y) / 2), font_color);
+	}
+
+	if (p_selected) {
+		Color accent = get_theme_color(SNAME("accent_color"), EditorStringName(Editor));
+		draw_rect_clipped(rect, accent, false);
+	}
+}
+
+void AnimationTrackEditTypeEvent::draw_key_link(int p_index_from, int p_index_to, float p_pixels_sec, int p_x, int p_next_x, int p_clip_left, int p_clip_right) {
+	// Events don't draw links
+}
+
+AnimationTrackEditTypeEvent::AnimationTrackEditTypeEvent() {
+	text_buf.instantiate();
+	text_buf->set_text_overrun_behavior(TextServer::OVERRUN_TRIM_ELLIPSIS);
+}
+
 /////////
 AnimationTrackEdit *AnimationTrackEditDefaultPlugin::create_value_track_edit(Object *p_object, Variant::Type p_type, const String &p_property, PropertyHint p_hint, const String &p_hint_string, int p_usage) {
 	if (p_property == "playing" && (p_object->is_class("AudioStreamPlayer") || p_object->is_class("AudioStreamPlayer2D") || p_object->is_class("AudioStreamPlayer3D"))) {
@@ -1388,4 +1472,8 @@ AnimationTrackEdit *AnimationTrackEditDefaultPlugin::create_animation_track_edit
 	AnimationTrackEditTypeAnimation *an = memnew(AnimationTrackEditTypeAnimation);
 	an->set_node(p_object);
 	return an;
+}
+
+AnimationTrackEdit *AnimationTrackEditDefaultPlugin::create_event_track_edit() {
+	return memnew(AnimationTrackEditTypeEvent);
 }

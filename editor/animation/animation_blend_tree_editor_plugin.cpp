@@ -805,11 +805,17 @@ bool AnimationNodeBlendTreeEditor::_update_filters(const Ref<AnimationNode> &ano
 		for (const StringName &E : animation_list) {
 			Ref<Animation> anim = tree->get_animation(E);
 			for (int i = 0; i < anim->get_track_count(); i++) {
+				Animation::TrackType track_type = anim->track_get_type(i);
+
+				if (track_type == Animation::TYPE_EVENT) {
+					// Animation Events can't be filtered
+					continue;
+				}
+
 				String track_path = String(anim->track_get_path(i));
 				paths.insert(track_path);
 
 				String track_type_name;
-				Animation::TrackType track_type = anim->track_get_type(i);
 				switch (track_type) {
 					case Animation::TrackType::TYPE_ANIMATION: {
 						track_type_name = TTR("Anim Clips");

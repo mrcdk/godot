@@ -153,6 +153,21 @@ public:
 	virtual void draw_key_link(int p_index_from, int p_index_to, float p_pixels_sec, int p_x, int p_next_x, int p_clip_left, int p_clip_right) override;
 };
 
+class AnimationTrackEditTypeEvent : public AnimationTrackEdit {
+	GDCLASS(AnimationTrackEditTypeEvent, AnimationTrackEdit);
+
+	Ref<TextLine> text_buf;
+
+public:
+	virtual int get_key_height() const override;
+	virtual Rect2 get_key_rect(int p_index, float p_pixels_sec) override;
+	virtual bool is_key_selectable_by_distance() const override;
+	virtual void draw_key(int p_index, float p_pixels_sec, int p_x, bool p_selected, int p_clip_left, int p_clip_right) override;
+	virtual void draw_key_link(int p_index_from, int p_index_to, float p_pixels_sec, int p_x, int p_next_x, int p_clip_left, int p_clip_right) override;
+
+	AnimationTrackEditTypeEvent();
+};
+
 class AnimationTrackEditDefaultPlugin : public AnimationTrackEditPlugin {
 	GDCLASS(AnimationTrackEditDefaultPlugin, AnimationTrackEditPlugin);
 
@@ -160,4 +175,5 @@ public:
 	virtual AnimationTrackEdit *create_value_track_edit(Object *p_object, Variant::Type p_type, const String &p_property, PropertyHint p_hint, const String &p_hint_string, int p_usage) override;
 	virtual AnimationTrackEdit *create_audio_track_edit() override;
 	virtual AnimationTrackEdit *create_animation_track_edit(Object *p_object) override;
+	virtual AnimationTrackEdit *create_event_track_edit() override;
 };

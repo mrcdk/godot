@@ -560,6 +560,7 @@ class AnimationTrackEditPlugin : public RefCounted {
 public:
 	virtual AnimationTrackEdit *create_value_track_edit(Object *p_object, Variant::Type p_type, const String &p_property, PropertyHint p_hint, const String &p_hint_string, int p_usage);
 	virtual AnimationTrackEdit *create_audio_track_edit();
+	virtual AnimationTrackEdit *create_event_track_edit();
 	virtual AnimationTrackEdit *create_animation_track_edit(Object *p_object);
 };
 
@@ -573,6 +574,7 @@ class AnimationTrackEditGroup : public Control {
 	Vector2 icon_size;
 	String node_name;
 	NodePath node;
+	bool pinned;
 	Node *root = nullptr;
 	AnimationTimelineEdit *timeline = nullptr;
 	AnimationTrackEditor *editor = nullptr;
@@ -593,6 +595,8 @@ public:
 	void set_root(Node *p_root);
 	void set_editor(AnimationTrackEditor *p_editor);
 	String get_node_name() const;
+	void set_pinned(bool value);
+	bool is_pinned() const;
 
 	AnimationTrackEditGroup();
 };
@@ -907,6 +911,8 @@ protected:
 	void _notification(int p_what);
 
 public:
+	static inline String ANIMATION_EVENTS_GROUP = "@AnimationEvents@";
+
 	// Public for use with callable_mp.
 	void _clear_selection(bool p_update = false);
 	void _key_selected(int p_key, bool p_single, int p_track);

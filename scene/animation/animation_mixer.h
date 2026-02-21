@@ -303,6 +303,12 @@ protected:
 		}
 	};
 
+	struct TrackCacheEvent : public TrackCache {
+		TrackCacheEvent() {
+			type = Animation::TYPE_EVENT;
+		}
+	};
+
 	RootMotionCache root_motion_cache;
 	AHashMap<Animation::TypeHash, TrackCache *, HashHasher> track_cache;
 	AHashMap<Ref<Animation>, LocalVector<TrackCache *>> animation_track_num_to_track_cache;

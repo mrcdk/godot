@@ -34,6 +34,7 @@
 #include "core/config/project_settings.h"
 #include "core/error/error_macros.h"
 #include "core/input/input.h"
+#include "core/string/node_path.h"
 #include "core/string/translation_server.h"
 #include "editor/animation/animation_bezier_editor.h"
 #include "editor/animation/animation_player_editor_plugin.h"
@@ -53,6 +54,7 @@
 #include "scene/animation/tween.h"
 #include "scene/gui/check_box.h"
 #include "scene/gui/color_picker.h"
+#include "scene/gui/control.h"
 #include "scene/gui/flow_container.h"
 #include "scene/gui/grid_container.h"
 #include "scene/gui/option_button.h"
@@ -63,6 +65,7 @@
 #include "scene/gui/texture_rect.h"
 #include "scene/gui/view_panner.h"
 #include "scene/main/window.h"
+#include "scene/resources/animation.h"
 #include "servers/audio/audio_stream.h"
 
 constexpr double FPS_DECIMAL = 1.0;
@@ -430,6 +433,23 @@ bool AnimationTrackKeyEdit::_set(const StringName &p_name, const Variant &p_valu
 				return true;
 			}
 		} break;
+		case Animation::TYPE_EVENT: {
+			if (name == "event") {
+				StringName event = p_value;
+
+				setting = true;
+				undo_redo->create_action(TTR("Animation Change Keyframe Value"), UndoRedo::MERGE_ENDS);
+				StringName prev = animation->event_track_get_key_event(track, key);
+				undo_redo->add_do_method(animation.ptr(), "event_track_set_key_event", track, key, event);
+				undo_redo->add_undo_method(animation.ptr(), "event_track_set_key_event", track, key, prev);
+				undo_redo->add_do_method(this, "_update_obj", animation);
+				undo_redo->add_undo_method(this, "_update_obj", animation);
+				undo_redo->commit_action();
+
+				setting = false;
+				return true;
+			}
+		} break;
 	}
 
 	return false;
@@ -539,6 +559,13 @@ bool AnimationTrackKeyEdit::_get(const StringName &p_name, Variant &r_ret) const
 		case Animation::TYPE_ANIMATION: {
 			if (name == "animation") {
 				r_ret = animation->animation_track_get_key_animation(track, key);
+				return true;
+			}
+
+		} break;
+		case Animation::TYPE_EVENT: {
+			if (name == "event") {
+				r_ret = animation->event_track_get_key_event(track, key);
 				return true;
 			}
 
@@ -665,6 +692,9 @@ void AnimationTrackKeyEdit::_get_property_list(List<PropertyInfo> *p_list) const
 
 			p_list->push_back(PropertyInfo(Variant::STRING_NAME, PNAME("animation"), PROPERTY_HINT_ENUM, animations));
 
+		} break;
+		case Animation::TYPE_EVENT: {
+			p_list->push_back(PropertyInfo(Variant::STRING_NAME, PNAME("event")));
 		} break;
 	}
 
@@ -984,6 +1014,20 @@ bool AnimationMultiTrackKeyEdit::_set(const StringName &p_name, const Variant &p
 						update_obj = true;
 					}
 				} break;
+				case Animation::TYPE_EVENT: {
+					if (name == "event") {
+						StringName event = p_value;
+
+						if (!setting) {
+							setting = true;
+							undo_redo->create_action(TTR("Animation Multi Change Keyframe Value"), UndoRedo::MERGE_ENDS);
+						}
+						StringName prev = animation->event_track_get_key_event(track, key);
+						undo_redo->add_do_method(animation.ptr(), "event_track_set_key_event", track, key, event);
+						undo_redo->add_undo_method(animation.ptr(), "event_track_set_key_event", track, key, prev);
+						update_obj = true;
+					}
+				} break;
 			}
 		}
 	}
@@ -1116,6 +1160,13 @@ bool AnimationMultiTrackKeyEdit::_get(const StringName &p_name, Variant &r_ret) 
 				case Animation::TYPE_ANIMATION: {
 					if (name == "animation") {
 						r_ret = animation->animation_track_get_key_animation(track, key);
+						return true;
+					}
+
+				} break;
+				case Animation::TYPE_EVENT: {
+					if (name == "event") {
+						r_ret = animation->event_track_get_key_event(track, key);
 						return true;
 					}
 
@@ -1270,6 +1321,9 @@ void AnimationMultiTrackKeyEdit::_get_property_list(List<PropertyInfo> *p_list) 
 				animations += "[stop]";
 
 				p_list->push_back(PropertyInfo(Variant::STRING_NAME, "animation", PROPERTY_HINT_ENUM, animations));
+			} break;
+			case Animation::TYPE_EVENT: {
+				p_list->push_back(PropertyInfo(Variant::STRING_NAME, PNAME("event")));
 			} break;
 		}
 	}
@@ -1473,6 +1527,7 @@ void AnimationTimelineEdit::_notification(int p_what) {
 			add_track->get_popup()->add_icon_item(get_editor_theme_icon(SNAME("KeyBezier")), TTRC("Bezier Curve Track..."));
 			add_track->get_popup()->add_icon_item(get_editor_theme_icon(SNAME("KeyAudio")), TTRC("Audio Playback Track..."));
 			add_track->get_popup()->add_icon_item(get_editor_theme_icon(SNAME("KeyAnimation")), TTRC("Animation Playback Track..."));
+			add_track->get_popup()->add_icon_item(get_editor_theme_icon(SNAME("Signals")), TTRC("Event Track..."));
 
 			timeline_resize_rect.size = get_editor_theme_icon(SNAME("TimelineHandle"))->get_size();
 		} break;
@@ -2220,6 +2275,8 @@ void AnimationTrackEdit::_notification(int p_what) {
 						text = TTR("Audio Clips:");
 					} else if (animation->track_get_type(track) == Animation::TYPE_ANIMATION) {
 						text = TTR("Animation Clips:");
+					} else if (animation->track_get_type(track) == Animation::TYPE_EVENT) {
+						text = anim_path.get_concatenated_names();
 					} else {
 						text += anim_path.get_concatenated_subnames();
 					}
@@ -2839,7 +2896,7 @@ bool AnimationTrackEdit::_is_value_key_valid(const Variant &p_key_value, Variant
 }
 
 Ref<Texture2D> AnimationTrackEdit::_get_key_type_icon() const {
-	const Ref<Texture2D> type_icons[9] = {
+	const Ref<Texture2D> type_icons[10] = {
 		get_editor_theme_icon(SNAME("KeyValue")),
 		get_editor_theme_icon(SNAME("KeyTrackPosition")),
 		get_editor_theme_icon(SNAME("KeyTrackRotation")),
@@ -2848,7 +2905,8 @@ Ref<Texture2D> AnimationTrackEdit::_get_key_type_icon() const {
 		get_editor_theme_icon(SNAME("KeyCall")),
 		get_editor_theme_icon(SNAME("KeyBezier")),
 		get_editor_theme_icon(SNAME("KeyAudio")),
-		get_editor_theme_icon(SNAME("KeyAnimation"))
+		get_editor_theme_icon(SNAME("KeyAnimation")),
+		get_editor_theme_icon(SNAME("Signals")) // TODO modify
 	};
 	return type_icons[animation->track_get_type(track)];
 }
@@ -3025,6 +3083,10 @@ String AnimationTrackEdit::get_tooltip(const Point2 &p_pos) const {
 				case Animation::TYPE_ANIMATION: {
 					String name = animation->animation_track_get_key_animation(track, key_idx);
 					text += TTR("Animation Clip:") + " " + name;
+				} break;
+				case Animation::TYPE_EVENT: {
+					String name = animation->event_track_get_key_event(track, key_idx);
+					text += TTR("Event:") + " " + name;
 				} break;
 			}
 			return text;
@@ -3518,9 +3580,13 @@ Variant AnimationTrackEdit::get_drag_data(const Point2 &p_point) {
 
 	Dictionary drag_data;
 	drag_data["type"] = "animation_track";
-	String base_path = String(animation->track_get_path(track));
-	base_path = base_path.get_slicec(':', 0); // Remove sub-path.
-	drag_data["group"] = base_path;
+	if (animation->track_get_type(track) == Animation::TYPE_EVENT) {
+		drag_data["group"] = AnimationTrackEditor::ANIMATION_EVENTS_GROUP;
+	} else {
+		String base_path = String(animation->track_get_path(track));
+		base_path = base_path.get_slicec(':', 0); // Remove sub-path.
+		drag_data["group"] = base_path;
+	}
 	drag_data["index"] = track;
 
 	Button *tb = memnew(Button);
@@ -3549,8 +3615,13 @@ bool AnimationTrackEdit::can_drop_data(const Point2 &p_point, const Variant &p_d
 
 	// Don't allow moving tracks outside their groups.
 	if (get_editor()->is_grouping_tracks()) {
-		String base_path = String(animation->track_get_path(track));
-		base_path = base_path.get_slicec(':', 0); // Remove sub-path.
+		String base_path;
+		if (animation->track_get_type(track) == Animation::TYPE_EVENT) {
+			base_path = AnimationTrackEditor::ANIMATION_EVENTS_GROUP;
+		} else {
+			base_path = String(animation->track_get_path(track));
+			base_path = base_path.get_slicec(':', 0); // Remove sub-path.
+		}
 		if (d["group"] != base_path) {
 			return false;
 		}
@@ -3580,8 +3651,13 @@ void AnimationTrackEdit::drop_data(const Point2 &p_point, const Variant &p_data)
 
 	// Don't allow moving tracks outside their groups.
 	if (get_editor()->is_grouping_tracks()) {
-		String base_path = String(animation->track_get_path(track));
-		base_path = base_path.get_slicec(':', 0); // Remove sub-path.
+		String base_path;
+		if (animation->track_get_type(track) == Animation::TYPE_EVENT) {
+			base_path = AnimationTrackEditor::ANIMATION_EVENTS_GROUP;
+		} else {
+			base_path = String(animation->track_get_path(track));
+			base_path = base_path.get_slicec(':', 0); // Remove sub-path.
+		}
 		if (d["group"] != base_path) {
 			return;
 		}
@@ -3778,6 +3854,13 @@ AnimationTrackEdit *AnimationTrackEditPlugin::create_animation_track_edit(Object
 	return nullptr;
 }
 
+AnimationTrackEdit *AnimationTrackEditPlugin::create_event_track_edit() {
+	if (get_script_instance()) {
+		return Object::cast_to<AnimationTrackEdit>(get_script_instance()->call("create_event_track_edit").operator Object *());
+	}
+	return nullptr;
+}
+
 ///////////////////////////////////////
 
 void AnimationTrackEditGroup::_notification(int p_what) {
@@ -3965,6 +4048,14 @@ Size2 AnimationTrackEditGroup::get_minimum_size() const {
 
 String AnimationTrackEditGroup::get_node_name() const {
 	return node_name;
+}
+
+void AnimationTrackEditGroup::set_pinned(bool value) {
+	pinned = value;
+}
+
+bool AnimationTrackEditGroup::is_pinned() const {
+	return pinned;
 }
 
 void AnimationTrackEditGroup::set_timeline(AnimationTimelineEdit *p_timeline) {
@@ -4979,7 +5070,8 @@ AnimationTrackEditor::TrackIndices AnimationTrackEditor::_confirm_insert(InsertD
 		case Animation::TYPE_BLEND_SHAPE:
 		case Animation::TYPE_VALUE:
 		case Animation::TYPE_AUDIO:
-		case Animation::TYPE_ANIMATION: {
+		case Animation::TYPE_ANIMATION:
+		case Animation::TYPE_EVENT: {
 			value = p_id.value;
 
 		} break;
@@ -5104,7 +5196,7 @@ bool AnimationTrackEditor::can_add_reset_key() const {
 	}
 	for (const KeyValue<SelectedKey, KeyInfo> &E : selection) {
 		const Animation::TrackType track_type = animation->track_get_type(E.key.track);
-		if (track_type != Animation::TYPE_ANIMATION && track_type != Animation::TYPE_AUDIO && track_type != Animation::TYPE_METHOD) {
+		if (track_type != Animation::TYPE_ANIMATION && track_type != Animation::TYPE_AUDIO && track_type != Animation::TYPE_METHOD && track_type != Animation::TYPE_EVENT) {
 			return true;
 		}
 	}
@@ -5161,12 +5253,55 @@ void AnimationTrackEditor::_update_tracks() {
 
 	AnimationTrackEdit *selected_track_edit = nullptr;
 
+	String filter_text = timeline->filter_track->get_text();
+
+	if (use_grouping) {
+		// Add the animation events group first if the animation has event tracks
+
+		bool animation_has_events = false;
+		for (int i = 0; i < animation->get_track_count(); i++) {
+			if (animation->track_get_type(i) == Animation::TYPE_EVENT) {
+				if (!filter_text.is_empty()) {
+					String target = String(animation->track_get_path(i));
+					if (target.containsn(filter_text)) {
+						animation_has_events = true;
+						break;
+					}
+				} else {
+					animation_has_events = true;
+					break;
+				}
+			}
+		}
+
+		if (animation_has_events) {
+			AnimationTrackEditGroup *g = memnew(AnimationTrackEditGroup);
+			Ref<Texture2D> icon = get_editor_theme_icon(SNAME("Signals"));
+			String name = TTR("Events");
+			String tooltip = TTR("Animation Events");
+			g->set_type_and_name(icon, name, NodePath(AnimationTrackEditor::ANIMATION_EVENTS_GROUP));
+			g->set_pinned(true);
+			g->set_root(root);
+			g->set_tooltip_text(tooltip);
+			g->set_timeline(timeline);
+			g->set_editor(this);
+			g->set_mouse_filter(MOUSE_FILTER_IGNORE);
+			groups.push_back(g);
+			VBoxContainer *vb = memnew(VBoxContainer);
+			vb->add_theme_constant_override("separation", 0);
+			vb->add_child(g);
+			group_sort[AnimationTrackEditor::ANIMATION_EVENTS_GROUP] = vb;
+			group_containers.push_back(vb);
+		}
+	}
+
 	for (int i = 0; i < animation->get_track_count(); i++) {
 		AnimationTrackEdit *track_edit = nullptr;
 
 		// Find hint and info for plugin.
 
-		if (use_filter) {
+		// Don't filter the animation event tracks
+		if (use_filter && animation->track_get_type(i) != Animation::TYPE_EVENT) {
 			NodePath path = animation->track_get_path(i);
 
 			if (root) {
@@ -5179,8 +5314,6 @@ void AnimationTrackEditor::_update_tracks() {
 				}
 			}
 		}
-
-		String filter_text = timeline->filter_track->get_text();
 
 		if (!filter_text.is_empty()) {
 			String target = String(animation->track_get_path(i));
@@ -5245,6 +5378,15 @@ void AnimationTrackEditor::_update_tracks() {
 			}
 		}
 
+		if (animation->track_get_type(i) == Animation::TYPE_EVENT) {
+			for (int j = 0; j < track_edit_plugins.size(); j++) {
+				track_edit = track_edit_plugins.write[j]->create_event_track_edit();
+				if (track_edit) {
+					break;
+				}
+			}
+		}
+
 		if (track_edit == nullptr) {
 			// No valid plugin_found.
 			track_edit = memnew(AnimationTrackEdit);
@@ -5256,7 +5398,10 @@ void AnimationTrackEditor::_update_tracks() {
 			String base_path = String(animation->track_get_path(i));
 			base_path = base_path.get_slicec(':', 0); // Remove sub-path.
 
-			if (!group_sort.has(base_path)) {
+			if (animation->track_get_type(i) == Animation::TYPE_EVENT) {
+				// Animation events go to the same group
+				base_path = AnimationTrackEditor::ANIMATION_EVENTS_GROUP;
+			} else if (!group_sort.has(base_path)) {
 				AnimationTrackEditGroup *g = memnew(AnimationTrackEditGroup);
 				Ref<Texture2D> icon = get_editor_theme_icon(SNAME("Node"));
 				String name = base_path;
@@ -5323,8 +5468,17 @@ void AnimationTrackEditor::_update_tracks() {
 		if (use_alphabetic_sorting) {
 			struct GroupAlphaCompare {
 				bool operator()(const VBoxContainer *p_lhs, const VBoxContainer *p_rhs) const {
-					String lhs_node_name = Object::cast_to<AnimationTrackEditGroup>(p_lhs->get_child(0))->get_node_name();
-					String rhs_node_name = Object::cast_to<AnimationTrackEditGroup>(p_rhs->get_child(0))->get_node_name();
+					AnimationTrackEditGroup *lhs_group = Object::cast_to<AnimationTrackEditGroup>(p_lhs->get_child(0));
+					AnimationTrackEditGroup *rhs_group = Object::cast_to<AnimationTrackEditGroup>(p_rhs->get_child(0));
+
+					if (lhs_group->is_pinned() && !rhs_group->is_pinned()) {
+						return true;
+					} else if (!lhs_group->is_pinned() && rhs_group->is_pinned()) {
+						return false;
+					}
+
+					String lhs_node_name = lhs_group->get_node_name();
+					String rhs_node_name = rhs_group->get_node_name();
 					return lhs_node_name < rhs_node_name;
 				}
 			};
@@ -5747,6 +5901,20 @@ void AnimationTrackEditor::_add_track(int p_type) {
 		EditorNode::get_singleton()->show_warning(TTR("Not possible to add a new track without a root"));
 		return;
 	}
+
+	if (p_type == Animation::TYPE_EVENT) {
+		// Animation events add the track directly
+
+		EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
+		undo_redo->create_action(TTR("Add Track"));
+		undo_redo->add_do_method(animation.ptr(), "add_track", p_type);
+		// undo_redo->add_do_method(animation.ptr(), "track_set_path", animation->get_track_count(), path_to);
+		undo_redo->add_undo_method(animation.ptr(), "remove_track", animation->get_track_count());
+		undo_redo->commit_action();
+
+		return;
+	}
+
 	adding_track_type = p_type;
 	Vector<StringName> valid_types;
 	switch (adding_track_type) {
@@ -5928,14 +6096,19 @@ void AnimationTrackEditor::_insert_key_from_track(float p_ofs, int p_track) {
 		p_ofs += SECOND_DECIMAL;
 	}
 
-	Node *node = root->get_node_or_null(animation->track_get_path(p_track));
-	if (!node) {
-		EditorNode::get_singleton()->show_warning(TTR("Track path is invalid, so can't add a key."));
-		return;
+	Animation::TrackType animation_track_type = animation->track_get_type(p_track);
+
+	Node *node = nullptr;
+	if (animation_track_type != Animation::TYPE_EVENT) {
+		node = root->get_node_or_null(animation->track_get_path(p_track));
+		if (!node) {
+			EditorNode::get_singleton()->show_warning(TTR("Track path is invalid, so can't add a key."));
+			return;
+		}
 	}
 
 	// Special handling for this one.
-	if (animation->track_get_type(p_track) == Animation::TYPE_METHOD) {
+	if (animation_track_type == Animation::TYPE_METHOD) {
 		method_selector->select_method_from_instance(node);
 
 		insert_key_from_track_call_ofs = p_ofs;
@@ -5947,13 +6120,18 @@ void AnimationTrackEditor::_insert_key_from_track(float p_ofs, int p_track) {
 	id.path = animation->track_get_path(p_track);
 	id.advance = false;
 	id.track_idx = p_track;
-	id.type = animation->track_get_type(p_track);
-	// TRANSLATORS: This describes the target of new animation track, will be inserted into another string.
-	id.query = vformat(TTR("node '%s'"), node->get_name());
+	id.type = animation_track_type;
+	if (animation_track_type == Animation::TYPE_EVENT) {
+		// TRANSLATORS: This describes the target of new animation track, will be inserted into another string.
+		id.query = TTR("event");
+	} else {
+		// TRANSLATORS: This describes the target of new animation track, will be inserted into another string.
+		id.query = vformat(TTR("node '%s'"), node->get_name());
+	}
 	id.time = p_ofs;
 	// id.value is filled in each case handled below.
 
-	switch (animation->track_get_type(p_track)) {
+	switch (animation_track_type) {
 		case Animation::TYPE_POSITION_3D: {
 			Node3D *base = Object::cast_to<Node3D>(node);
 
@@ -6024,6 +6202,9 @@ void AnimationTrackEditor::_insert_key_from_track(float p_ofs, int p_track) {
 		} break;
 		case Animation::TYPE_ANIMATION: {
 			id.value = StringName("[stop]");
+		} break;
+		case Animation::TYPE_EVENT: {
+			id.value = StringName("new_event");
 		} break;
 		default: {
 			// All track types should be handled by now.
@@ -6968,6 +7149,9 @@ void AnimationTrackEditor::_edit_menu_pressed(int p_option) {
 					case Animation::TYPE_AUDIO:
 						track_type = TTR("Audio");
 						break;
+					case Animation::TYPE_EVENT:
+						track_type = TTR("Events");
+						break;
 					default: {
 					};
 				}
@@ -7402,7 +7586,7 @@ void AnimationTrackEditor::_edit_menu_pressed(int p_option) {
 				const SelectedKey &sk = E.key;
 
 				const Animation::TrackType track_type = animation->track_get_type(E.key.track);
-				if (track_type == Animation::TYPE_ANIMATION || track_type == Animation::TYPE_AUDIO || track_type == Animation::TYPE_METHOD) {
+				if (track_type == Animation::TYPE_ANIMATION || track_type == Animation::TYPE_AUDIO || track_type == Animation::TYPE_METHOD || track_type == Animation::TYPE_EVENT) {
 					continue;
 				}
 
