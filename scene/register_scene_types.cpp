@@ -108,6 +108,7 @@
 #include "scene/main/timer.h"
 #include "scene/main/viewport.h"
 #include "scene/main/window.h"
+#include "scene/resources/animation_event.h"
 #include "scene/resources/animation_library.h"
 #include "scene/resources/atlas_texture.h"
 #include "scene/resources/audio_stream_polyphonic.h"
@@ -1095,6 +1096,7 @@ void register_scene_types() {
 	GDREGISTER_CLASS(Texture3DRD);
 
 	GDREGISTER_CLASS(Animation);
+	GDREGISTER_CLASS(AnimationEvent);
 	GDREGISTER_CLASS(AnimationLibrary);
 
 	GDREGISTER_ABSTRACT_CLASS(Font);

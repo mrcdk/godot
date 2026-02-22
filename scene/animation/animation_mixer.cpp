@@ -1862,14 +1862,14 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 						if (idx < 0) {
 							continue;
 						}
-						StringName event = a->event_track_get_key_event(i, idx);
-						emit_signal(SNAME("animation_event_triggered"), event, blend);
+						Ref<AnimationEvent> event = a->event_track_get_key_event(i, idx);
+						emit_signal(SNAME("animation_event_triggered"), ai.animation_data.name, event, blend);
 					} else {
 						List<int> indices;
 						a->track_get_key_indices_in_range(i, time, delta, start, end, &indices, looped_flag);
 						for (int &F : indices) {
-							StringName event = a->event_track_get_key_event(i, F);
-							emit_signal(SNAME("animation_event_triggered"), event, blend);
+							Ref<AnimationEvent> event = a->event_track_get_key_event(i, F);
+							emit_signal(SNAME("animation_event_triggered"), ai.animation_data.name, event, blend);
 						}
 					}
 				} break;
@@ -2512,7 +2512,7 @@ void AnimationMixer::_bind_methods() {
 	ADD_SIGNAL(MethodInfo(SNAME("animation_libraries_updated")));
 	ADD_SIGNAL(MethodInfo(SNAME("animation_finished"), PropertyInfo(Variant::STRING_NAME, "anim_name")));
 	ADD_SIGNAL(MethodInfo(SNAME("animation_started"), PropertyInfo(Variant::STRING_NAME, "anim_name")));
-	ADD_SIGNAL(MethodInfo(SNAME("animation_event_triggered"), PropertyInfo(Variant::STRING_NAME, "event"), PropertyInfo(Variant::FLOAT, "weight")));
+	ADD_SIGNAL(MethodInfo(SNAME("animation_event_triggered"), PropertyInfo(Variant::STRING_NAME, "anim_name"), PropertyInfo(Variant::STRING_NAME, "event"), PropertyInfo(Variant::FLOAT, "weight")));
 	ADD_SIGNAL(MethodInfo(SNAME("caches_cleared")));
 	ADD_SIGNAL(MethodInfo(SNAME("mixer_applied")));
 	ADD_SIGNAL(MethodInfo(SNAME("mixer_updated"))); // For updating dummy player.

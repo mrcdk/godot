@@ -32,6 +32,7 @@
 
 #include "core/math/math_defs.h"
 #include "core/string/print_string.h"
+#include "core/variant/dictionary.h"
 #include "editor/animation/animation_track_editor.h"
 #include "editor/audio/audio_stream_preview.h"
 #include "editor/editor_string_names.h"
@@ -1355,28 +1356,37 @@ int AnimationTrackEditTypeEvent::get_key_height() const {
 }
 
 Rect2 AnimationTrackEditTypeEvent::get_key_rect(int p_index, float p_pixels_sec) {
-	Ref<Font> font = get_theme_font(SceneStringName(font), SNAME("Label"));
-	int font_size = get_theme_font_size(SceneStringName(font_size), SNAME("Label"));
 	int height = get_size().y;
 	int width = height;
 
 	if (!get_editor()->is_function_name_pressed()) {
-		StringName event = get_animation()->event_track_get_key_event(get_track(), p_index);
-		Size2 size = font->get_string_size(event, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size);
-		width = size.x + (height / 2);
+		Dictionary tvalue = get_animation()->track_get_key_value(get_track(), p_index);
+		Ref<AnimationEvent> event = tvalue.get("event", Ref<AnimationEvent>());
+		if (event.is_valid() && !event->get_event_name().is_empty()) {
+			Ref<Font> font = get_theme_font(SceneStringName(font), SNAME("Label"));
+			int font_size = get_theme_font_size(SceneStringName(font_size), SNAME("Label"));
+			Size2 size = font->get_string_size(event->get_event_name(), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size);
+			width = size.x + (height / 2);
+		}
 	}
 
 	return Rect2(0, 0, width, height);
 }
 
 bool AnimationTrackEditTypeEvent::is_key_selectable_by_distance() const {
-	return false;
+	return true;
 }
 
 void AnimationTrackEditTypeEvent::draw_key(int p_index, float p_pixels_sec, int p_x, bool p_selected, int p_clip_left, int p_clip_right) {
-	// Color color = get_animation()->event_track_get_key_event(get_track(), p_index);
-	StringName text = get_animation()->event_track_get_key_event(get_track(), p_index);
+	Dictionary tvalue = get_animation()->track_get_key_value(get_track(), p_index);
+	Ref<AnimationEvent> event = tvalue.get("event", Ref<AnimationEvent>());
+	String event_name;
 	Color bg_color = Color(1, 1, 1);
+
+	if (event.is_valid()) {
+		event_name = event->get_event_name();
+		bg_color = event->get_tag_color();
+	}
 
 	Ref<Font> font = get_theme_font(SceneStringName(font), SNAME("Label"));
 	int font_size = get_theme_font_size(SceneStringName(font_size), SNAME("Label"));
@@ -1393,8 +1403,8 @@ void AnimationTrackEditTypeEvent::draw_key(int p_index, float p_pixels_sec, int 
 	int text_x = p_x + text_offset_x;
 	Size2 text_size;
 
-	if (!get_editor()->is_function_name_pressed() && !text.is_empty()) {
-		text_size = font->get_string_size(text);
+	if (!get_editor()->is_function_name_pressed() && !event_name.is_empty()) {
+		text_size = font->get_string_size(event_name);
 		rect_width = MAX(0, MIN(text_size.x + text_offset_x + 4, p_clip_right - p_x - 2));
 		max_text_width = MAX(0, rect_width - text_offset_x - 4);
 		int diff = p_x + text_offset_x - p_clip_left;
@@ -1449,7 +1459,7 @@ void AnimationTrackEditTypeEvent::draw_key(int p_index, float p_pixels_sec, int 
 	if (max_text_width > 0) {
 		text_buf->set_width(max_text_width);
 		text_buf->clear();
-		text_buf->add_string(text, font, font_size);
+		text_buf->add_string(event_name, font, font_size);
 		Vector2 p(text_x, int(get_size().height - text_size.y) / 2);
 		// draw_rect(Rect2(p, Size2(max_text_width, text_size.y)), Color(1, 0, 0));
 		text_buf->draw(get_canvas_item(), p, font_color);

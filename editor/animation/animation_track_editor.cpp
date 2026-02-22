@@ -36,6 +36,7 @@
 #include "core/input/input.h"
 #include "core/string/node_path.h"
 #include "core/string/translation_server.h"
+#include "core/variant/dictionary.h"
 #include "editor/animation/animation_bezier_editor.h"
 #include "editor/animation/animation_player_editor_plugin.h"
 #include "editor/docks/inspector_dock.h"
@@ -66,6 +67,7 @@
 #include "scene/gui/view_panner.h"
 #include "scene/main/window.h"
 #include "scene/resources/animation.h"
+#include "scene/resources/animation_event.h"
 #include "servers/audio/audio_stream.h"
 
 constexpr double FPS_DECIMAL = 1.0;
@@ -434,14 +436,37 @@ bool AnimationTrackKeyEdit::_set(const StringName &p_name, const Variant &p_valu
 			}
 		} break;
 		case Animation::TYPE_EVENT: {
-			if (name == "event") {
-				StringName event = p_value;
-
+			Ref<AnimationEvent> current_event = animation->event_track_get_key_event(track, key);
+			if (name == "event_name") {
 				setting = true;
 				undo_redo->create_action(TTR("Animation Change Keyframe Value"), UndoRedo::MERGE_ENDS);
-				StringName prev = animation->event_track_get_key_event(track, key);
-				undo_redo->add_do_method(animation.ptr(), "event_track_set_key_event", track, key, event);
-				undo_redo->add_undo_method(animation.ptr(), "event_track_set_key_event", track, key, prev);
+				undo_redo->add_do_method(current_event.ptr(), "set_event_name", p_value);
+				undo_redo->add_undo_method(current_event.ptr(), "set_event_name", current_event->get_event_name());
+				undo_redo->add_do_method(this, "_update_obj", animation);
+				undo_redo->add_undo_method(this, "_update_obj", animation);
+				undo_redo->commit_action();
+
+				setting = false;
+				return true;
+			}
+			if (name == "bg_color") {
+				setting = true;
+				undo_redo->create_action(TTR("Animation Change Keyframe Value"), UndoRedo::MERGE_ENDS);
+				undo_redo->add_do_method(current_event.ptr(), "set_tag_color", p_value);
+				undo_redo->add_undo_method(current_event.ptr(), "set_tag_color", current_event->get_tag_color());
+				undo_redo->add_do_method(this, "_update_obj", animation);
+				undo_redo->add_undo_method(this, "_update_obj", animation);
+				undo_redo->commit_action();
+
+				setting = false;
+				return true;
+			}
+			if (name == "event") {
+				Ref<AnimationEvent> new_event = p_value;
+				setting = true;
+				undo_redo->create_action(TTR("Animation Change Keyframe Value"), UndoRedo::MERGE_ENDS);
+				undo_redo->add_do_method(animation.ptr(), "event_track_set_key_event", track, key, new_event);
+				undo_redo->add_undo_method(animation.ptr(), "event_track_set_key_event", track, key, current_event);
 				undo_redo->add_do_method(this, "_update_obj", animation);
 				undo_redo->add_undo_method(this, "_update_obj", animation);
 				undo_redo->commit_action();
@@ -564,8 +589,17 @@ bool AnimationTrackKeyEdit::_get(const StringName &p_name, Variant &r_ret) const
 
 		} break;
 		case Animation::TYPE_EVENT: {
+			Ref<AnimationEvent> event = animation->event_track_get_key_event(track, key);
+			if (name == "event_name") {
+				r_ret = event->get_event_name();
+				return true;
+			}
+			if (name == "bg_color") {
+				r_ret = event->get_tag_color();
+				return true;
+			}
 			if (name == "event") {
-				r_ret = animation->event_track_get_key_event(track, key);
+				r_ret = event;
 				return true;
 			}
 
@@ -694,7 +728,9 @@ void AnimationTrackKeyEdit::_get_property_list(List<PropertyInfo> *p_list) const
 
 		} break;
 		case Animation::TYPE_EVENT: {
-			p_list->push_back(PropertyInfo(Variant::STRING_NAME, PNAME("event")));
+			p_list->push_back(PropertyInfo(Variant::STRING_NAME, PNAME("event_name")));
+			p_list->push_back(PropertyInfo(Variant::COLOR, PNAME("bg_color")));
+			p_list->push_back(PropertyInfo(Variant::OBJECT, PNAME("event"), PROPERTY_HINT_RESOURCE_TYPE, AnimationEvent::get_class_static()));
 		} break;
 	}
 
@@ -1015,16 +1051,23 @@ bool AnimationMultiTrackKeyEdit::_set(const StringName &p_name, const Variant &p
 					}
 				} break;
 				case Animation::TYPE_EVENT: {
-					if (name == "event") {
-						StringName event = p_value;
-
+					Ref<AnimationEvent> current_event = animation->event_track_get_key_event(track, key);
+					if (name == "event_name") {
 						if (!setting) {
 							setting = true;
 							undo_redo->create_action(TTR("Animation Multi Change Keyframe Value"), UndoRedo::MERGE_ENDS);
 						}
-						StringName prev = animation->event_track_get_key_event(track, key);
-						undo_redo->add_do_method(animation.ptr(), "event_track_set_key_event", track, key, event);
-						undo_redo->add_undo_method(animation.ptr(), "event_track_set_key_event", track, key, prev);
+						undo_redo->add_do_method(current_event.ptr(), "set_event_name", p_value);
+						undo_redo->add_undo_method(current_event.ptr(), "set_event_name", current_event->get_event_name());
+						update_obj = true;
+					}
+					if (name == "bg_color") {
+						if (!setting) {
+							setting = true;
+							undo_redo->create_action(TTR("Animation Multi Change Keyframe Value"), UndoRedo::MERGE_ENDS);
+						}
+						undo_redo->add_do_method(current_event.ptr(), "set_tag_color", p_value);
+						undo_redo->add_undo_method(current_event.ptr(), "set_tag_color", current_event->get_tag_color());
 						update_obj = true;
 					}
 				} break;
@@ -1165,8 +1208,13 @@ bool AnimationMultiTrackKeyEdit::_get(const StringName &p_name, Variant &r_ret) 
 
 				} break;
 				case Animation::TYPE_EVENT: {
-					if (name == "event") {
-						r_ret = animation->event_track_get_key_event(track, key);
+					Ref<AnimationEvent> event = animation->event_track_get_key_event(track, key);
+					if (name == "event_name") {
+						r_ret = event->get_event_name();
+						return true;
+					}
+					if (name == "bg_color") {
+						r_ret = event->get_tag_color();
 						return true;
 					}
 
@@ -1323,7 +1371,8 @@ void AnimationMultiTrackKeyEdit::_get_property_list(List<PropertyInfo> *p_list) 
 				p_list->push_back(PropertyInfo(Variant::STRING_NAME, "animation", PROPERTY_HINT_ENUM, animations));
 			} break;
 			case Animation::TYPE_EVENT: {
-				p_list->push_back(PropertyInfo(Variant::STRING_NAME, PNAME("event")));
+				p_list->push_back(PropertyInfo(Variant::STRING_NAME, PNAME("event_name")));
+				p_list->push_back(PropertyInfo(Variant::COLOR, PNAME("bg_color")));
 			} break;
 		}
 	}
@@ -3116,8 +3165,8 @@ String AnimationTrackEdit::get_tooltip(const Point2 &p_pos) const {
 					text += TTR("Animation Clip:") + " " + name;
 				} break;
 				case Animation::TYPE_EVENT: {
-					String name = animation->event_track_get_key_event(track, key_idx);
-					text += TTR("Event:") + " " + name;
+					String event_name = animation->event_track_get_key_event(track, key_idx)->get_event_name();
+					text += TTR("Event:") + " " + event_name;
 				} break;
 			}
 			return text;
@@ -6212,7 +6261,11 @@ void AnimationTrackEditor::_insert_key_from_track(float p_ofs, int p_track) {
 			id.value = StringName("[stop]");
 		} break;
 		case Animation::TYPE_EVENT: {
-			id.value = StringName("new_event");
+			Dictionary ev;
+			Ref<AnimationEvent> event = Ref<AnimationEvent>();
+			event.instantiate();
+			ev["event"] = event;
+			id.value = ev;
 		} break;
 		default: {
 			// All track types should be handled by now.

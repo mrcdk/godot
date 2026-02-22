@@ -33,6 +33,7 @@
 #include "core/io/resource.h"
 #include "core/string/node_path.h"
 #include "core/templates/local_vector.h"
+#include "scene/resources/animation_event.h"
 
 #define ANIM_MIN_LENGTH 0.001
 
@@ -240,7 +241,7 @@ private:
 	/* EVENT TRACK */
 
 	struct EventKey {
-		StringName event;
+		Ref<AnimationEvent> event;
 	};
 
 	struct EventTrack : public Track {
@@ -526,9 +527,9 @@ public:
 	Vector<Variant> method_track_get_params(int p_track, int p_key_idx) const;
 	StringName method_track_get_name(int p_track, int p_key_idx) const;
 
-	int event_track_insert_key(int p_track, double p_time, const StringName &p_event);
-	void event_track_set_key_event(int p_track, int p_key, const StringName &p_event);
-	StringName event_track_get_key_event(int p_track, int p_key_idx) const;
+	int event_track_insert_key(int p_track, double p_time, const Ref<AnimationEvent> &p_event);
+	void event_track_set_key_event(int p_track, int p_key, const Ref<AnimationEvent> &p_event);
+	Ref<AnimationEvent> event_track_get_key_event(int p_track, int p_key_idx) const;
 
 	void copy_track(int p_track, Ref<Animation> p_to_animation);
 

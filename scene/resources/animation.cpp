@@ -32,7 +32,7 @@
 #include "animation.compat.inc"
 
 #include "core/io/marshalls.h"
-#include "core/templates/tuple.h"
+#include "scene/resources/animation_event.h"
 
 bool Animation::_set(const StringName &p_name, const Variant &p_value) {
 	String prop_name = p_name;
@@ -452,7 +452,7 @@ bool Animation::_set(const StringName &p_name, const Variant &p_value) {
 				ERR_FAIL_COND_V(!d.has("events"), false);
 
 				Vector<real_t> times = d["times"];
-				Vector<String> events = d["events"];
+				Array events = d["events"];
 
 				ERR_FAIL_COND_V(events.size() != times.size(), false);
 
@@ -460,15 +460,19 @@ bool Animation::_set(const StringName &p_name, const Variant &p_value) {
 					int valcount = times.size();
 
 					const real_t *rt = times.ptr();
-					const String *rc = events.ptr();
-
-					ev->values.resize(valcount);
+					ev->values.clear();
 
 					for (int i = 0; i < valcount; i++) {
+						Ref<AnimationEvent> event = events[i];
+						if (!event.is_valid()) {
+							continue;
+						}
+
 						TKey<EventKey> ak;
 						ak.time = rt[i];
-						ak.value.event = rc[i];
-						ev->values[i] = ak;
+						ak.value.event = event;
+
+						ev->values.push_back(ak);
 					}
 				}
 
@@ -894,21 +898,19 @@ bool Animation::_get(const StringName &p_name, Variant &r_ret) const {
 				Dictionary d;
 
 				Vector<real_t> key_times;
-				Vector<String> events;
+				Array events;
 
 				int kk = ev->values.size();
 
 				key_times.resize(kk);
-				events.resize(kk);
 
 				real_t *wti = key_times.ptrw();
-				String *wcl = events.ptrw();
 
 				const TKey<EventKey> *vls = ev->values.ptr();
 
 				for (int i = 0; i < kk; i++) {
 					wti[i] = vls[i].time;
-					wcl[i] = vls[i].value.event;
+					events.push_back(vls[i].value.event);
 				}
 
 				d["times"] = key_times;
@@ -1923,18 +1925,19 @@ int Animation::track_insert_key(int p_track, double p_time, const Variant &p_key
 
 		} break;
 		case TYPE_EVENT: {
-			EventTrack *at = static_cast<EventTrack *>(t);
+			EventTrack *et = static_cast<EventTrack *>(t);
 
-			// TODO make it a dictionary as method track
+			Dictionary k = p_key;
+			ERR_FAIL_COND_V(!k.has("event"), -1);
 
-			EventKey k;
-			k.event = p_key;
+			EventKey ek;
+			ek.event = k["event"];
 
 			TKey<EventKey> ak;
 			ak.time = p_time;
-			ak.value = k;
+			ak.value = ek;
 
-			ret = _insert(p_time, at->values, ak);
+			ret = _insert(p_time, et->values, ak);
 
 		} break;
 	}
@@ -2083,11 +2086,10 @@ Variant Animation::track_get_key_value(int p_track, int p_key_idx) const {
 			EventTrack *at = static_cast<EventTrack *>(t);
 			ERR_FAIL_UNSIGNED_INDEX_V((uint32_t)p_key_idx, at->values.size(), Variant());
 
-			// TODO make it a dictionary
-			// Dictionary k;
-			// k["event"] = at->values[p_key_idx].value.name;
+			Dictionary k;
+			k["event"] = at->values[p_key_idx].value.event;
 
-			return at->values[p_key_idx].value.event;
+			return k;
 
 		} break;
 	}
@@ -4025,7 +4027,7 @@ StringName Animation::animation_track_get_key_animation(int p_track, int p_key) 
 	return at->values[p_key].value;
 }
 
-int Animation::event_track_insert_key(int p_track, double p_time, const StringName &p_event) {
+int Animation::event_track_insert_key(int p_track, double p_time, const Ref<AnimationEvent> &p_event) {
 	ERR_FAIL_UNSIGNED_INDEX_V((uint32_t)p_track, tracks.size(), -1);
 	Track *t = tracks[p_track];
 	ERR_FAIL_COND_V(t->type != TYPE_EVENT, -1);
@@ -4043,7 +4045,7 @@ int Animation::event_track_insert_key(int p_track, double p_time, const StringNa
 	return key;
 }
 
-void Animation::event_track_set_key_event(int p_track, int p_key, const StringName &p_event) {
+void Animation::event_track_set_key_event(int p_track, int p_key, const Ref<AnimationEvent> &p_event) {
 	ERR_FAIL_UNSIGNED_INDEX((uint32_t)p_track, tracks.size());
 	Track *t = tracks[p_track];
 	ERR_FAIL_COND(t->type != TYPE_EVENT);
@@ -4057,14 +4059,14 @@ void Animation::event_track_set_key_event(int p_track, int p_key, const StringNa
 	emit_changed();
 }
 
-StringName Animation::event_track_get_key_event(int p_track, int p_key) const {
-	ERR_FAIL_UNSIGNED_INDEX_V((uint32_t)p_track, tracks.size(), StringName());
+Ref<AnimationEvent> Animation::event_track_get_key_event(int p_track, int p_key) const {
+	ERR_FAIL_UNSIGNED_INDEX_V((uint32_t)p_track, tracks.size(), Ref<AnimationEvent>());
 	const Track *t = tracks[p_track];
-	ERR_FAIL_COND_V(t->type != TYPE_EVENT, StringName());
+	ERR_FAIL_COND_V(t->type != TYPE_EVENT, Ref<AnimationEvent>());
 
 	const EventTrack *at = static_cast<const EventTrack *>(t);
 
-	ERR_FAIL_UNSIGNED_INDEX_V((uint32_t)p_key, at->values.size(), StringName());
+	ERR_FAIL_UNSIGNED_INDEX_V((uint32_t)p_key, at->values.size(), Ref<AnimationEvent>());
 
 	return at->values[p_key].value.event;
 }
