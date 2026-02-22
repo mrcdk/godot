@@ -450,7 +450,6 @@ class AnimationTrackEdit : public Control {
 
 	bool hovered = false;
 	bool clicking_on_name = false;
-	int hovering_key_idx = -1;
 
 	void _zoom_changed();
 
@@ -508,6 +507,8 @@ protected:
 		// AnimationTrackEdit plugins can use this value to add extra track menu ids
 		MENU_MAX,
 	};
+
+	int hovering_key_idx = -1;
 
 	static void _bind_methods();
 	void _notification(int p_what);

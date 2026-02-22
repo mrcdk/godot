@@ -31,8 +31,10 @@
 #include "animation_track_editor_plugins.h"
 
 #include "core/math/math_defs.h"
+#include "core/object/script_language.h"
 #include "core/string/print_string.h"
 #include "core/variant/dictionary.h"
+#include "core/variant/variant.h"
 #include "editor/animation/animation_track_editor.h"
 #include "editor/audio/audio_stream_preview.h"
 #include "editor/editor_string_names.h"
@@ -1356,21 +1358,26 @@ int AnimationTrackEditTypeEvent::get_key_height() const {
 }
 
 Rect2 AnimationTrackEditTypeEvent::get_key_rect(int p_index, float p_pixels_sec) {
-	int height = get_size().y;
-	int width = height;
+	Rect2 rect(0, 0, get_size().y, get_size().y);
 
-	if (!get_editor()->is_function_name_pressed()) {
-		Dictionary tvalue = get_animation()->track_get_key_value(get_track(), p_index);
-		Ref<AnimationEvent> event = tvalue.get("event", Ref<AnimationEvent>());
-		if (event.is_valid() && !event->get_event_name().is_empty()) {
-			Ref<Font> font = get_theme_font(SceneStringName(font), SNAME("Label"));
-			int font_size = get_theme_font_size(SceneStringName(font_size), SNAME("Label"));
-			Size2 size = font->get_string_size(event->get_event_name(), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size);
-			width = size.x + (height / 2);
+	Dictionary tvalue = get_animation()->track_get_key_value(get_track(), p_index);
+	Ref<AnimationEvent> event = tvalue.get("event", Ref<AnimationEvent>());
+	if (event.is_valid()) {
+		if (!get_editor()->is_function_name_pressed()) {
+			if (!event->get_event_name().is_empty()) {
+				Ref<Font> font = get_theme_font(SceneStringName(font), SNAME("Label"));
+				int font_size = get_theme_font_size(SceneStringName(font_size), SNAME("Label"));
+				Size2 size = font->get_string_size(event->get_event_name(), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size);
+				rect.size.x = size.x + (rect.size.y / 2);
+			}
 		}
+	} else {
+		Ref<Texture2D> invalid = get_editor_theme_icon(SNAME("KeyInvalid"));
+		rect.position = Vector2(-invalid->get_width() / 2, (get_size().height - invalid->get_height()) / 2);
+		rect.size = invalid->get_size();
 	}
 
-	return Rect2(0, 0, width, height);
+	return rect;
 }
 
 bool AnimationTrackEditTypeEvent::is_key_selectable_by_distance() const {
@@ -1380,6 +1387,16 @@ bool AnimationTrackEditTypeEvent::is_key_selectable_by_distance() const {
 void AnimationTrackEditTypeEvent::draw_key(int p_index, float p_pixels_sec, int p_x, bool p_selected, int p_clip_left, int p_clip_right) {
 	Dictionary tvalue = get_animation()->track_get_key_value(get_track(), p_index);
 	Ref<AnimationEvent> event = tvalue.get("event", Ref<AnimationEvent>());
+	if (!event.is_valid()) {
+		Ref<Texture2D> invalid = get_editor_theme_icon(SNAME("KeyInvalid"));
+		Vector2 ofs(p_x - invalid->get_width() / 2, (get_size().height - invalid->get_height()) / 2);
+		draw_texture(
+				invalid,
+				ofs,
+				p_index == hovering_key_idx ? get_theme_color(SNAME("folder_icon_color"), SNAME("FileDialog")) : Color(1, 1, 1));
+		return;
+	}
+
 	String event_name;
 	Color bg_color = Color(1, 1, 1);
 
@@ -1489,6 +1506,10 @@ void AnimationTrackEditTypeEvent::build_track_menu(PopupMenu *p_menu, int p_hove
 	}
 	if (get_editor()->is_key_clipboard_active()) {
 		p_menu->add_icon_item(get_editor_theme_icon(SNAME("ActionPaste")), TTR("Paste Event(s)"), MENU_KEY_PASTE);
+	}
+	if (p_selected || get_editor()->is_selection_active()) {
+		p_menu->add_separator();
+		p_menu->add_icon_item(get_editor_theme_icon(SNAME("Remove")), TTR("Delete Event(s)"), MENU_KEY_DELETE);
 	}
 }
 

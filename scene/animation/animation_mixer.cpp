@@ -1863,13 +1863,17 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 							continue;
 						}
 						Ref<AnimationEvent> event = a->event_track_get_key_event(i, idx);
-						emit_signal(SNAME("animation_event_triggered"), ai.animation_data.name, event, blend);
+						if (event.is_valid()) {
+							emit_signal(SNAME("animation_event_triggered"), ai.animation_data.name, event, blend);
+						}
 					} else {
 						List<int> indices;
 						a->track_get_key_indices_in_range(i, time, delta, start, end, &indices, looped_flag);
 						for (int &F : indices) {
 							Ref<AnimationEvent> event = a->event_track_get_key_event(i, F);
-							emit_signal(SNAME("animation_event_triggered"), ai.animation_data.name, event, blend);
+							if (event.is_valid()) {
+								emit_signal(SNAME("animation_event_triggered"), ai.animation_data.name, event, blend);
+							}
 						}
 					}
 				} break;
