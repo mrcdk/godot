@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="16"
+   height="16"
+   version="1.1"
+   id="svg1"
+   sodipodi:docname="AnimationEventSelected.svg"
+   inkscape:version="1.4.3 (0d15f75042, 2025-12-25)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs1" />
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="16"
+     inkscape:cx="-24.125"
+     inkscape:cy="15.28125"
+     inkscape:window-width="3440"
+     inkscape:window-height="1364"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg1"
+     showguides="true" />
+  <path
+     fill="#e0e0e0"
+     d="m 13.999789,14 c 0.552284,0 0.999999,-0.447715 0.999999,-1 V 3 c 0,-0.5522847 -0.447715,-1 -0.999999,-1 H 5.9997881 C 5.6960098,1.999886 5.4086496,2.137863 5.218788,2.3750001 L 1.2187879,7.3750004 c -0.29143428,0.3649579 -0.29143428,0.8830419 0,1.2479999 L 5.218788,13.623 C 5.4080333,13.860614 5.6950233,13.999324 5.9987882,14 Z m -1,-2 H 6.4797882 L 3.280788,8.0000003 6.4807881,4 h 6.5190009 z"
+     id="path1"
+     sodipodi:nodetypes="ssssccccccscccccc"
+     style="stroke-width:1" />
+</svg>

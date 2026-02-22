@@ -158,12 +158,19 @@ class AnimationTrackEditTypeEvent : public AnimationTrackEdit {
 
 	Ref<TextLine> text_buf;
 
+	enum {
+		MENU_CONVERT_SIMPLE = MENU_MAX,
+		MENU_CONVERT_RANGE,
+	};
+
 public:
 	virtual int get_key_height() const override;
 	virtual Rect2 get_key_rect(int p_index, float p_pixels_sec) override;
 	virtual bool is_key_selectable_by_distance() const override;
 	virtual void draw_key(int p_index, float p_pixels_sec, int p_x, bool p_selected, int p_clip_left, int p_clip_right) override;
 	virtual void draw_key_link(int p_index_from, int p_index_to, float p_pixels_sec, int p_x, int p_next_x, int p_clip_left, int p_clip_right) override;
+	virtual void build_track_menu(PopupMenu *p_menu, int p_hovering_key_idx, bool p_selected) override;
+	virtual void menu_selected(int p_index) override;
 
 	AnimationTrackEditTypeEvent();
 };

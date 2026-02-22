@@ -422,29 +422,6 @@ class AnimationTrackEdit : public Control {
 	GDCLASS(AnimationTrackEdit, Control);
 	friend class AnimationTimelineEdit;
 
-	enum {
-		MENU_CALL_MODE_CONTINUOUS,
-		MENU_CALL_MODE_DISCRETE,
-		MENU_CALL_MODE_CAPTURE,
-		MENU_INTERPOLATION_NEAREST,
-		MENU_INTERPOLATION_LINEAR,
-		MENU_INTERPOLATION_CUBIC,
-		MENU_INTERPOLATION_LINEAR_ANGLE,
-		MENU_INTERPOLATION_CUBIC_ANGLE,
-		MENU_LOOP_WRAP,
-		MENU_LOOP_CLAMP,
-		MENU_KEY_INSERT,
-		MENU_KEY_DUPLICATE,
-		MENU_KEY_CUT,
-		MENU_KEY_COPY,
-		MENU_KEY_PASTE,
-		MENU_KEY_ADD_RESET,
-		MENU_KEY_DELETE,
-		MENU_KEY_LOOKUP,
-		MENU_USE_BLEND_ENABLED,
-		MENU_USE_BLEND_DISABLED,
-	};
-
 	AnimationTimelineEdit *timeline = nullptr;
 	Popup *path_popup = nullptr;
 	LineEdit *path = nullptr;
@@ -507,6 +484,31 @@ class AnimationTrackEdit : public Control {
 	AnimationTrackEditor *editor = nullptr;
 
 protected:
+	enum {
+		MENU_CALL_MODE_CONTINUOUS,
+		MENU_CALL_MODE_DISCRETE,
+		MENU_CALL_MODE_CAPTURE,
+		MENU_INTERPOLATION_NEAREST,
+		MENU_INTERPOLATION_LINEAR,
+		MENU_INTERPOLATION_CUBIC,
+		MENU_INTERPOLATION_LINEAR_ANGLE,
+		MENU_INTERPOLATION_CUBIC_ANGLE,
+		MENU_LOOP_WRAP,
+		MENU_LOOP_CLAMP,
+		MENU_KEY_INSERT,
+		MENU_KEY_DUPLICATE,
+		MENU_KEY_CUT,
+		MENU_KEY_COPY,
+		MENU_KEY_PASTE,
+		MENU_KEY_ADD_RESET,
+		MENU_KEY_DELETE,
+		MENU_KEY_LOOKUP,
+		MENU_USE_BLEND_ENABLED,
+		MENU_USE_BLEND_DISABLED,
+		// AnimationTrackEdit plugins can use this value to add extra track menu ids
+		MENU_MAX,
+	};
+
 	static void _bind_methods();
 	void _notification(int p_what);
 
@@ -527,9 +529,11 @@ public:
 	virtual void draw_key(int p_index, float p_pixels_sec, int p_x, bool p_selected, int p_clip_left, int p_clip_right);
 	virtual void draw_bg(int p_clip_left, int p_clip_right);
 	virtual void draw_fg(int p_clip_left, int p_clip_right);
+	virtual void build_track_menu(PopupMenu *p_menu, int p_hovering_key_idx, bool p_selected);
+	virtual void menu_selected(int p_index);
 
 	//helper
-	void draw_texture_region_clipped(const Ref<Texture2D> &p_texture, const Rect2 &p_rect, const Rect2 &p_region);
+	void draw_texture_region_clipped(const Ref<Texture2D> &p_texture, const Rect2 &p_rect, const Rect2 &p_region, const Color &p_modulate = Color(1, 1, 1));
 	void draw_rect_clipped(const Rect2 &p_rect, const Color &p_color, bool p_filled = true);
 
 	int get_track() const;

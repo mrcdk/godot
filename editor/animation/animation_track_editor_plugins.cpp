@@ -32,6 +32,7 @@
 
 #include "core/math/math_defs.h"
 #include "core/string/print_string.h"
+#include "editor/animation/animation_track_editor.h"
 #include "editor/audio/audio_stream_preview.h"
 #include "editor/editor_string_names.h"
 #include "editor/editor_undo_redo_manager.h"
@@ -41,6 +42,7 @@
 #include "scene/2d/sprite_2d.h"
 #include "scene/3d/sprite_3d.h"
 #include "scene/animation/animation_player.h"
+#include "scene/gui/popup_menu.h"
 #include "scene/resources/text_line.h"
 #include "servers/audio/audio_stream.h"
 #include "servers/text/text_server.h"
@@ -1349,72 +1351,149 @@ void AnimationTrackEditTypeAnimation::set_node(Object *p_object) {
 int AnimationTrackEditTypeEvent::get_key_height() const {
 	Ref<Font> font = get_theme_font(SceneStringName(font), SNAME("Label"));
 	int font_size = get_theme_font_size(SceneStringName(font_size), SNAME("Label"));
-	return font->get_height(font_size);
+	return font->get_height(font_size) * 1.2;
 }
 
 Rect2 AnimationTrackEditTypeEvent::get_key_rect(int p_index, float p_pixels_sec) {
 	Ref<Font> font = get_theme_font(SceneStringName(font), SNAME("Label"));
 	int font_size = get_theme_font_size(SceneStringName(font_size), SNAME("Label"));
-	int height = font->get_height(font_size);
+	int height = get_size().y;
 	int width = height;
 
 	if (!get_editor()->is_function_name_pressed()) {
 		StringName event = get_animation()->event_track_get_key_event(get_track(), p_index);
 		Size2 size = font->get_string_size(event, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size);
-		width = size.x + 8;
+		width = size.x + (height / 2);
 	}
 
 	return Rect2(0, 0, width, height);
 }
 
 bool AnimationTrackEditTypeEvent::is_key_selectable_by_distance() const {
-	return true;
+	return false;
 }
 
 void AnimationTrackEditTypeEvent::draw_key(int p_index, float p_pixels_sec, int p_x, bool p_selected, int p_clip_left, int p_clip_right) {
 	// Color color = get_animation()->event_track_get_key_event(get_track(), p_index);
 	StringName text = get_animation()->event_track_get_key_event(get_track(), p_index);
-	Color bg_color = Color(1, 1, 1, 1);
+	Color bg_color = Color(1, 1, 1);
 
 	Ref<Font> font = get_theme_font(SceneStringName(font), SNAME("Label"));
 	int font_size = get_theme_font_size(SceneStringName(font_size), SNAME("Label"));
 	Color font_color = get_theme_color(SceneStringName(font_color), SNAME("Label"));
-	font_color = bg_color.inverted();
-	font_color.a = 0.5;
-	int rect_height = font->get_height(font_size);
+	if (bg_color.srgb_to_linear().get_luminance() > 0.5) {
+		font_color = Color(0, 0, 0);
+	} else {
+		font_color = Color(1, 1, 1);
+	}
+	int rect_height = get_size().y;
 	int rect_width = rect_height;
+	int text_offset_x = (rect_height / 2) - 4;
 	int max_text_width = 0;
+	int text_x = p_x + text_offset_x;
 	Size2 text_size;
 
 	if (!get_editor()->is_function_name_pressed() && !text.is_empty()) {
 		text_size = font->get_string_size(text);
-		max_text_width = MAX(0, p_clip_right - p_x - 8);
-		rect_width = MAX(2, MIN(text_size.x + 8, p_clip_right - p_x - 2));
+		rect_width = MAX(0, MIN(text_size.x + text_offset_x + 4, p_clip_right - p_x - 2));
+		max_text_width = MAX(0, rect_width - text_offset_x - 4);
+		int diff = p_x + text_offset_x - p_clip_left;
+		if (diff < 0) {
+			text_x = p_clip_left;
+			max_text_width = MAX(0, max_text_width + diff);
+		}
 	}
 
-	Rect2 rect(Vector2(p_x, int(get_size().height - rect_height) / 2), Size2(rect_width, rect_height));
+	Ref<Texture2D> bg_texture = get_editor_theme_icon(SNAME("AnimationEvent"));
 
-	draw_rect_clipped(Rect2(rect.position, rect.size / 2), Color(0.4, 0.4, 0.4));
-	draw_rect_clipped(Rect2(rect.position + rect.size / 2, rect.size / 2), Color(0.4, 0.4, 0.4));
-	draw_rect_clipped(Rect2(rect.position + Vector2(rect.size.x / 2, 0), rect.size / 2), Color(0.6, 0.6, 0.6));
-	draw_rect_clipped(Rect2(rect.position + Vector2(0, rect.size.y / 2), rect.size / 2), Color(0.6, 0.6, 0.6));
-	draw_rect_clipped(rect, bg_color);
+	rect_width += 4;
+	if (rect_width < rect_height) {
+		rect_width = rect_height;
+	}
+
+	Rect2 rect(Vector2(p_x - 2, 0), Size2(rect_height / 2, rect_height));
+	Rect2 src_rect(Point2(), Size2(8, 16));
+
+	draw_texture_region_clipped(bg_texture, rect, src_rect, bg_color);
+	rect.position.x += rect.size.x;
+	rect.size.x = rect_width - (rect_height / 4) - rect.size.x;
+	src_rect.position.x += src_rect.size.x;
+	src_rect.size.x = 4;
+	draw_texture_region_clipped(bg_texture, rect, src_rect, bg_color);
+	rect.position.x += rect.size.x;
+	rect.size.x = rect_height / 4;
+	src_rect.position.x += src_rect.size.x;
+	src_rect.size.x = 4;
+	draw_texture_region_clipped(bg_texture, rect, src_rect, bg_color);
+
+	if (p_selected) {
+		bg_texture = get_editor_theme_icon(SNAME("AnimationEventSelected"));
+		bg_color = get_theme_color(SNAME("accent_color"), EditorStringName(Editor));
+
+		rect = Rect2(Vector2(p_x - 2, 0), Size2(rect_height / 2, rect_height));
+		src_rect = Rect2(Point2(), Size2(8, 16));
+
+		draw_texture_region_clipped(bg_texture, rect, src_rect, bg_color);
+		rect.position.x += rect.size.x;
+		rect.size.x = rect_width - (rect_height / 4) - rect.size.x;
+		src_rect.position.x += src_rect.size.x;
+		src_rect.size.x = 4;
+		draw_texture_region_clipped(bg_texture, rect, src_rect, bg_color);
+		rect.position.x += rect.size.x;
+		rect.size.x = rect_height / 4;
+		src_rect.position.x += src_rect.size.x;
+		src_rect.size.x = 4;
+		draw_texture_region_clipped(bg_texture, rect, src_rect, bg_color);
+	}
 
 	if (max_text_width > 0) {
 		text_buf->set_width(max_text_width);
 		text_buf->clear();
 		text_buf->add_string(text, font, font_size);
-		text_buf->draw(get_canvas_item(), Vector2(p_x + 4, int(get_size().height - text_size.y) / 2), font_color);
-	}
-
-	if (p_selected) {
-		Color accent = get_theme_color(SNAME("accent_color"), EditorStringName(Editor));
-		draw_rect_clipped(rect, accent, false);
+		Vector2 p(text_x, int(get_size().height - text_size.y) / 2);
+		// draw_rect(Rect2(p, Size2(max_text_width, text_size.y)), Color(1, 0, 0));
+		text_buf->draw(get_canvas_item(), p, font_color);
 	}
 }
 
 void AnimationTrackEditTypeEvent::draw_key_link(int p_index_from, int p_index_to, float p_pixels_sec, int p_x, int p_next_x, int p_clip_left, int p_clip_right) {
 	// Events don't draw links
+}
+
+void AnimationTrackEditTypeEvent::build_track_menu(PopupMenu *p_menu, int p_hovering_key_idx, bool p_selected) {
+	if (p_hovering_key_idx > -1) {
+		p_menu->add_icon_item(get_editor_theme_icon(SNAME("AnimationAutoFit")), TTR("Convert To Range Event"), MENU_CONVERT_RANGE);
+	} else {
+		p_menu->add_icon_item(get_editor_theme_icon(SNAME("AnimationEvent")), TTR("Insert Event"), MENU_KEY_INSERT);
+	}
+	if (p_selected || get_editor()->is_selection_active()) {
+		p_menu->add_separator();
+		p_menu->add_icon_item(get_editor_theme_icon(SNAME("Remove")), TTR("Delete Event(s)"), MENU_KEY_DELETE);
+	}
+	return;
+	if (p_selected || get_editor()->is_selection_active()) {
+		p_menu->add_separator();
+		p_menu->add_icon_item(get_editor_theme_icon(SNAME("Duplicate")), TTR("Duplicate Event(s)"), MENU_KEY_DUPLICATE);
+		p_menu->add_icon_item(get_editor_theme_icon(SNAME("ActionCut")), TTR("Cut Event(s)"), MENU_KEY_CUT);
+		p_menu->add_icon_item(get_editor_theme_icon(SNAME("ActionCopy")), TTR("Copy Event(s)"), MENU_KEY_COPY);
+	}
+	if (get_editor()->is_key_clipboard_active()) {
+		p_menu->add_icon_item(get_editor_theme_icon(SNAME("ActionPaste")), TTR("Paste Event(s)"), MENU_KEY_PASTE);
+	}
+}
+
+void AnimationTrackEditTypeEvent::menu_selected(int p_index) {
+	switch (p_index) {
+		case MENU_CONVERT_SIMPLE: {
+			print_line("Convert to simple event");
+		} break;
+		case MENU_CONVERT_RANGE: {
+			print_line("Convert to range event");
+		} break;
+		default: {
+			AnimationTrackEdit::menu_selected(p_index);
+		} break;
+	}
 }
 
 AnimationTrackEditTypeEvent::AnimationTrackEditTypeEvent() {

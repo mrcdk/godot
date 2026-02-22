@@ -2606,6 +2606,37 @@ void AnimationTrackEdit::_notification(int p_what) {
 		} break;
 	}
 }
+void AnimationTrackEdit::build_track_menu(PopupMenu *p_menu, int p_hovering_key_idx, bool p_selected) {
+	if (animation->track_get_type(track) == Animation::TYPE_METHOD) {
+		if (p_hovering_key_idx != -1) {
+			lookup_key_idx = p_hovering_key_idx;
+			p_menu->add_icon_item(get_editor_theme_icon(SNAME("Help")), vformat("%s (%s)", TTR("Go to Definition"), animation->method_track_get_name(track, lookup_key_idx)), MENU_KEY_LOOKUP);
+			p_menu->add_separator();
+		}
+	}
+	p_menu->add_icon_item(get_editor_theme_icon(SNAME("Key")), TTR("Insert Key..."), MENU_KEY_INSERT);
+	if (p_selected || editor->is_selection_active()) {
+		p_menu->add_separator();
+		p_menu->add_icon_item(get_editor_theme_icon(SNAME("Duplicate")), TTR("Duplicate Key(s)"), MENU_KEY_DUPLICATE);
+		p_menu->add_icon_item(get_editor_theme_icon(SNAME("ActionCut")), TTR("Cut Key(s)"), MENU_KEY_CUT);
+		p_menu->add_icon_item(get_editor_theme_icon(SNAME("ActionCopy")), TTR("Copy Key(s)"), MENU_KEY_COPY);
+	}
+	if (editor->is_key_clipboard_active()) {
+		p_menu->add_icon_item(get_editor_theme_icon(SNAME("ActionPaste")), TTR("Paste Key(s)"), MENU_KEY_PASTE);
+	}
+	if (p_selected || editor->is_selection_active()) {
+		AnimationPlayerEditor *ape = AnimationPlayerEditor::get_singleton();
+		if (ape) {
+			AnimationPlayer *ap = ape->get_player();
+			if (ap && editor->can_add_reset_key() && animation != ap->get_animation(SceneStringName(RESET))) {
+				p_menu->add_separator();
+				p_menu->add_icon_item(get_editor_theme_icon(SNAME("MoveUp")), TTR("Send Key(s) to RESET"), MENU_KEY_ADD_RESET);
+			}
+		}
+		p_menu->add_separator();
+		p_menu->add_icon_item(get_editor_theme_icon(SNAME("Remove")), TTR("Delete Key(s)"), MENU_KEY_DELETE);
+	}
+}
 
 int AnimationTrackEdit::get_key_height() const {
 	if (animation.is_null()) {
@@ -2743,7 +2774,7 @@ void AnimationTrackEdit::draw_bg(int p_clip_left, int p_clip_right) {
 void AnimationTrackEdit::draw_fg(int p_clip_left, int p_clip_right) {
 }
 
-void AnimationTrackEdit::draw_texture_region_clipped(const Ref<Texture2D> &p_texture, const Rect2 &p_rect, const Rect2 &p_region) {
+void AnimationTrackEdit::draw_texture_region_clipped(const Ref<Texture2D> &p_texture, const Rect2 &p_rect, const Rect2 &p_region, const Color &p_modulate) {
 	int clip_left = timeline->get_name_limit();
 	int clip_right = get_size().width - timeline->get_buttons_width();
 
@@ -2777,7 +2808,7 @@ void AnimationTrackEdit::draw_texture_region_clipped(const Ref<Texture2D> &p_tex
 		region.size.x -= region_pixels;
 	}
 
-	draw_texture_rect_region(p_texture, rect, region);
+	draw_texture_rect_region(p_texture, rect, region, p_modulate);
 }
 
 int AnimationTrackEdit::get_track() const {
@@ -2906,7 +2937,7 @@ Ref<Texture2D> AnimationTrackEdit::_get_key_type_icon() const {
 		get_editor_theme_icon(SNAME("KeyBezier")),
 		get_editor_theme_icon(SNAME("KeyAudio")),
 		get_editor_theme_icon(SNAME("KeyAnimation")),
-		get_editor_theme_icon(SNAME("Signals")) // TODO modify
+		get_editor_theme_icon(SNAME("AnimationEvent")) // TODO modify
 	};
 	return type_icons[animation->track_get_type(track)];
 }
@@ -3297,35 +3328,7 @@ void AnimationTrackEdit::gui_input(const Ref<InputEvent> &p_event) {
 				bool selected = _try_select_at_ui_pos(pos, mb->is_command_or_control_pressed() || mb->is_shift_pressed(), false);
 
 				menu->clear();
-				if (animation->track_get_type(track) == Animation::TYPE_METHOD) {
-					if (hovering_key_idx != -1) {
-						lookup_key_idx = hovering_key_idx;
-						menu->add_icon_item(get_editor_theme_icon(SNAME("Help")), vformat("%s (%s)", TTR("Go to Definition"), animation->method_track_get_name(track, lookup_key_idx)), MENU_KEY_LOOKUP);
-						menu->add_separator();
-					}
-				}
-				menu->add_icon_item(get_editor_theme_icon(SNAME("Key")), TTR("Insert Key..."), MENU_KEY_INSERT);
-				if (selected || editor->is_selection_active()) {
-					menu->add_separator();
-					menu->add_icon_item(get_editor_theme_icon(SNAME("Duplicate")), TTR("Duplicate Key(s)"), MENU_KEY_DUPLICATE);
-					menu->add_icon_item(get_editor_theme_icon(SNAME("ActionCut")), TTR("Cut Key(s)"), MENU_KEY_CUT);
-					menu->add_icon_item(get_editor_theme_icon(SNAME("ActionCopy")), TTR("Copy Key(s)"), MENU_KEY_COPY);
-				}
-				if (editor->is_key_clipboard_active()) {
-					menu->add_icon_item(get_editor_theme_icon(SNAME("ActionPaste")), TTR("Paste Key(s)"), MENU_KEY_PASTE);
-				}
-				if (selected || editor->is_selection_active()) {
-					AnimationPlayerEditor *ape = AnimationPlayerEditor::get_singleton();
-					if (ape) {
-						AnimationPlayer *ap = ape->get_player();
-						if (ap && editor->can_add_reset_key() && animation != ap->get_animation(SceneStringName(RESET))) {
-							menu->add_separator();
-							menu->add_icon_item(get_editor_theme_icon(SNAME("MoveUp")), TTR("Send Key(s) to RESET"), MENU_KEY_ADD_RESET);
-						}
-					}
-					menu->add_separator();
-					menu->add_icon_item(get_editor_theme_icon(SNAME("Remove")), TTR("Delete Key(s)"), MENU_KEY_DELETE);
-				}
+				build_track_menu(menu, hovering_key_idx, selected);
 				menu->reset_size();
 
 				menu->set_position(get_screen_position() + get_local_mouse_position());
@@ -3673,6 +3676,10 @@ void AnimationTrackEdit::drop_data(const Point2 &p_point, const Variant &p_data)
 }
 
 void AnimationTrackEdit::_menu_selected(int p_index) {
+	menu_selected(p_index);
+}
+
+void AnimationTrackEdit::menu_selected(int p_index) {
 	switch (p_index) {
 		case MENU_CALL_MODE_CONTINUOUS:
 		case MENU_CALL_MODE_DISCRETE:
@@ -5276,7 +5283,7 @@ void AnimationTrackEditor::_update_tracks() {
 
 		if (animation_has_events) {
 			AnimationTrackEditGroup *g = memnew(AnimationTrackEditGroup);
-			Ref<Texture2D> icon = get_editor_theme_icon(SNAME("Signals"));
+			Ref<Texture2D> icon = get_editor_theme_icon(SNAME("AnimationEvent"));
 			String name = TTR("Events");
 			String tooltip = TTR("Animation Events");
 			g->set_type_and_name(icon, name, NodePath(AnimationTrackEditor::ANIMATION_EVENTS_GROUP));
@@ -5701,6 +5708,7 @@ void AnimationTrackEditor::_notification(int p_what) {
 			bezier_key_mode->set_item_icon(bezier_key_mode->get_item_index(Animation::HANDLE_MODE_MIRRORED), get_editor_theme_icon(SNAME("BezierHandlesMirror")));
 
 			_update_timeline_margins();
+			_update_tracks();
 		} break;
 
 		case NOTIFICATION_READY: {
