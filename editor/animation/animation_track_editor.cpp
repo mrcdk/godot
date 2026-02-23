@@ -36,6 +36,7 @@
 #include "core/input/input.h"
 #include "core/object/object.h"
 #include "core/string/node_path.h"
+#include "core/string/print_string.h"
 #include "core/string/translation_server.h"
 #include "core/variant/dictionary.h"
 #include "editor/animation/animation_bezier_editor.h"
@@ -2468,6 +2469,10 @@ void AnimationTrackEdit::_notification(int p_what) {
 				for (int i = 0; i < animation->track_get_key_count(track); i++) {
 					float time_offset = animation->track_get_key_time(track, i) - timeline->get_value();
 					if (editor->is_key_selected(track, i) && editor->is_moving_selection()) {
+						if (editor->is_moving_selection_to_different_track() && editor->get_moving_selection_hovered_track() != track) {
+							// skip keys in a different track
+							continue;
+						}
 						time_offset += editor->get_moving_selection_offset();
 					}
 
@@ -3455,8 +3460,8 @@ void AnimationTrackEdit::gui_input(const Ref<InputEvent> &p_event) {
 	if (mb.is_valid() && moving_selection_attempt) {
 		if (!mb->is_pressed() && mb->get_button_index() == MouseButton::LEFT) {
 			moving_selection_attempt = false;
-			if (moving_selection && moving_selection_effective) {
-				if (std::abs(editor->get_moving_selection_offset()) > CMP_EPSILON) {
+			if (moving_selection && (moving_selection_effective || editor->is_moving_selection_to_different_track())) {
+				if (std::abs(editor->get_moving_selection_offset()) > CMP_EPSILON || editor->is_moving_selection_to_different_track()) {
 					emit_signal(SNAME("move_selection_commit"));
 				}
 			} else if (select_single_attempt != -1) {
@@ -6398,10 +6403,56 @@ void AnimationTrackEditor::_key_deselected(int p_key, int p_track) {
 void AnimationTrackEditor::_move_selection_begin() {
 	moving_selection = true;
 	moving_selection_offset = 0;
+	moving_selection_starting_track = -1;
+	moving_selection_hovered_track = -1;
+	moving_selection_to_different_track = false;
+
+	int track = -1;
+	bool same_track = true;
+	for (RBMap<SelectedKey, KeyInfo>::Element *E = selection.back(); E; E = E->prev()) {
+		if (track == -1) {
+			track = E->key().track;
+		}
+		if (track != E->key().track) {
+			same_track = false;
+			break;
+		}
+	}
+
+	if (same_track) {
+		moving_selection_starting_track = track;
+	}
 }
 
 void AnimationTrackEditor::_move_selection(float p_offset) {
 	moving_selection_offset = p_offset;
+	if (moving_selection_starting_track > -1) {
+		moving_selection_hovered_track = -1;
+		for (int i = 0; i < track_edits.size(); i++) {
+			if (track_edits[i]->is_hovered()) {
+				moving_selection_hovered_track = track_edits[i]->get_track();
+				break;
+			}
+		}
+	}
+	moving_selection_to_different_track = moving_selection_starting_track > -1 && moving_selection_hovered_track > -1 && moving_selection_starting_track != moving_selection_hovered_track;
+
+	// Check the first selected key to see if it's compatible with the new track
+	if (moving_selection_to_different_track) {
+		const SelectedKey &sk = selection.front()->key();
+		Variant::Type value_type = animation->track_get_key_value(sk.track, sk.key).get_type();
+		Animation::TrackType track_type = animation->track_get_type(sk.track);
+		moving_selection_to_different_track = _is_track_compatible(moving_selection_hovered_track, value_type, track_type);
+	}
+
+	for (RBMap<SelectedKey, KeyInfo>::Element *E = selection.back(); E; E = E->prev()) {
+		int target_track = E->key().track;
+		if (moving_selection_to_different_track) {
+			target_track = moving_selection_hovered_track;
+		}
+		E->value().track = target_track;
+	}
+
 	_redraw_tracks();
 }
 
@@ -6530,6 +6581,7 @@ void AnimationTrackEditor::_select_at_anim(const Ref<Animation> &p_anim, int p_t
 	sk.track = p_track;
 	sk.key = idx;
 	KeyInfo ki;
+	ki.track = p_track;
 	ki.pos = p_pos;
 
 	selection.insert(sk, ki);
@@ -6549,46 +6601,54 @@ void AnimationTrackEditor::_move_selection_commit() {
 	for (RBMap<SelectedKey, KeyInfo>::Element *E = selection.back(); E; E = E->prev()) {
 		undo_redo->add_do_method(animation.ptr(), "track_remove_key", E->key().track, E->key().key);
 	}
+
 	// 2 - Remove overlapped keys.
 	for (RBMap<SelectedKey, KeyInfo>::Element *E = selection.back(); E; E = E->prev()) {
+		int new_track = E->value().track;
 		float newtime = E->get().pos + motion;
-		int idx = animation->track_find_key(E->key().track, newtime, Animation::FIND_MODE_APPROX);
+
+		int idx = animation->track_find_key(new_track, newtime, Animation::FIND_MODE_APPROX);
 		if (idx == -1) {
 			continue;
 		}
+
 		SelectedKey sk;
 		sk.key = idx;
-		sk.track = E->key().track;
+		sk.track = new_track;
 		if (selection.has(sk)) {
 			continue; // Already in selection, don't save.
 		}
 
-		undo_redo->add_do_method(animation.ptr(), "track_remove_key_at_time", E->key().track, newtime);
+		undo_redo->add_do_method(animation.ptr(), "track_remove_key_at_time", new_track, newtime);
 		_AnimMoveRestore amr;
 
-		amr.key = animation->track_get_key_value(E->key().track, idx);
-		amr.track = E->key().track;
+		amr.key = animation->track_get_key_value(new_track, idx);
+		amr.track = new_track;
 		amr.time = newtime;
-		amr.transition = animation->track_get_key_transition(E->key().track, idx);
+		amr.transition = animation->track_get_key_transition(new_track, idx);
 
 		to_restore.push_back(amr);
 	}
 
 	// 3 - Move the keys (Reinsert them).
 	for (RBMap<SelectedKey, KeyInfo>::Element *E = selection.back(); E; E = E->prev()) {
+		int original_track = E->key().track;
+		int new_track = E->value().track;
 		float newpos = E->get().pos + motion;
-		undo_redo->add_do_method(animation.ptr(), "track_insert_key", E->key().track, newpos, animation->track_get_key_value(E->key().track, E->key().key), animation->track_get_key_transition(E->key().track, E->key().key));
+		undo_redo->add_do_method(animation.ptr(), "track_insert_key", new_track, newpos, animation->track_get_key_value(original_track, E->key().key), animation->track_get_key_transition(original_track, E->key().key));
 	}
 
 	// 4 - (Undo) Remove inserted keys.
 	for (RBMap<SelectedKey, KeyInfo>::Element *E = selection.back(); E; E = E->prev()) {
+		int new_track = E->value().track;
 		float newpos = E->get().pos + motion;
-		undo_redo->add_undo_method(animation.ptr(), "track_remove_key_at_time", E->key().track, newpos);
+		undo_redo->add_undo_method(animation.ptr(), "track_remove_key_at_time", new_track, newpos);
 	}
 
 	// 5 - (Undo) Reinsert keys.
 	for (RBMap<SelectedKey, KeyInfo>::Element *E = selection.back(); E; E = E->prev()) {
-		undo_redo->add_undo_method(animation.ptr(), "track_insert_key", E->key().track, E->get().pos, animation->track_get_key_value(E->key().track, E->key().key), animation->track_get_key_transition(E->key().track, E->key().key));
+		int original_track = E->key().track;
+		undo_redo->add_undo_method(animation.ptr(), "track_insert_key", original_track, E->get().pos, animation->track_get_key_value(original_track, E->key().key), animation->track_get_key_transition(original_track, E->key().key));
 	}
 
 	// 6 - (Undo) Reinsert overlapped keys.
@@ -6601,11 +6661,13 @@ void AnimationTrackEditor::_move_selection_commit() {
 
 	// 7 - Reselect.
 	for (RBMap<SelectedKey, KeyInfo>::Element *E = selection.back(); E; E = E->prev()) {
+		int original_track = E->key().track;
+		int new_track = E->value().track;
 		float oldpos = E->get().pos;
 		float newpos = oldpos + motion;
 
-		undo_redo->add_do_method(this, "_select_at_anim", animation, E->key().track, newpos);
-		undo_redo->add_undo_method(this, "_select_at_anim", animation, E->key().track, oldpos);
+		undo_redo->add_do_method(this, "_select_at_anim", animation, new_track, newpos);
+		undo_redo->add_undo_method(this, "_select_at_anim", animation, original_track, oldpos);
 	}
 
 	moving_selection = false;
@@ -6633,6 +6695,14 @@ bool AnimationTrackEditor::is_moving_selection() const {
 
 float AnimationTrackEditor::get_moving_selection_offset() const {
 	return moving_selection_offset;
+}
+
+int AnimationTrackEditor::get_moving_selection_hovered_track() const {
+	return moving_selection_hovered_track;
+}
+
+bool AnimationTrackEditor::is_moving_selection_to_different_track() const {
+	return moving_selection_to_different_track;
 }
 
 void AnimationTrackEditor::_box_selection_draw() {

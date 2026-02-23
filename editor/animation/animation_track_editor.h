@@ -533,6 +533,8 @@ public:
 	virtual void build_track_menu(PopupMenu *p_menu, int p_hovering_key_idx, bool p_selected);
 	virtual void menu_selected(int p_index);
 
+	bool is_hovered() const { return hovered; }
+
 	//helper
 	void draw_texture_region_clipped(const Ref<Texture2D> &p_texture, const Rect2 &p_rect, const Rect2 &p_region, const Color &p_modulate = Color(1, 1, 1));
 	void draw_rect_clipped(const Rect2 &p_rect, const Color &p_color, bool p_filled = true);
@@ -766,6 +768,7 @@ class AnimationTrackEditor : public VBoxContainer {
 	};
 
 	struct KeyInfo {
+		int track = 0;
 		float pos = 0;
 	};
 
@@ -773,6 +776,9 @@ class AnimationTrackEditor : public VBoxContainer {
 
 	bool moving_selection = false;
 	float moving_selection_offset = 0.0f;
+	bool moving_selection_to_different_track = false;
+	int moving_selection_starting_track = -1;
+	int moving_selection_hovered_track = -1;
 	void _move_selection_begin();
 	void _move_selection(float p_offset);
 	void _move_selection_commit();
@@ -990,6 +996,7 @@ public:
 	bool is_selection_active() const;
 	bool is_key_clipboard_active() const;
 	bool is_moving_selection() const;
+	bool is_moving_selection_to_different_track() const;
 	bool is_snap_timeline_enabled() const;
 	bool is_snap_keys_enabled() const;
 	bool is_insert_at_current_time_enabled() const;
@@ -997,6 +1004,7 @@ public:
 	bool is_bezier_editor_active() const;
 	bool can_add_reset_key() const;
 	void _on_filter_updated(const String &p_filter);
+	int get_moving_selection_hovered_track() const;
 	float get_moving_selection_offset() const;
 	float snap_time(float p_value, bool p_relative = false);
 	float get_snap_unit();
