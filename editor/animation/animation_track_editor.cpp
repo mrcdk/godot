@@ -2462,13 +2462,24 @@ void AnimationTrackEdit::_notification(int p_what) {
 			{
 				float scale = timeline->get_zoom_scale();
 
+				struct KeyInfo {
+					float screen_pos;
+					int track;
+					int index;
+					bool selected;
+
+					bool operator<(const KeyInfo &p_key) const { return screen_pos == p_key.screen_pos ? index < p_key.index : screen_pos < p_key.screen_pos; }
+				};
+
 				// Pre-calculate the actual order of the keys. This is needed as a move might be happening
 				// which might cause the keys to be in a different order than their current indices.
-				Vector<Pair<float, int>> sorted_keys;
+
+				Vector<KeyInfo> sorted_keys;
 
 				for (int i = 0; i < animation->track_get_key_count(track); i++) {
 					float time_offset = animation->track_get_key_time(track, i) - timeline->get_value();
-					if (editor->is_key_selected(track, i) && editor->is_moving_selection()) {
+					bool selected = editor->is_key_selected(track, i);
+					if (selected && editor->is_moving_selection()) {
 						if (editor->is_moving_selection_to_different_track() && editor->get_moving_selection_hovered_track() != track) {
 							// skip keys in a different track
 							continue;
@@ -2477,25 +2488,51 @@ void AnimationTrackEdit::_notification(int p_what) {
 					}
 
 					float screen_pos = time_offset * scale + limit;
-					sorted_keys.push_back(Pair<float, int>(screen_pos, i));
+
+					KeyInfo ki;
+					ki.track = track;
+					ki.index = i;
+					ki.selected = selected;
+					ki.screen_pos = screen_pos;
+
+					sorted_keys.push_back(ki);
+				}
+
+				if (editor->is_moving_selection() && editor->is_moving_selection_to_different_track()) {
+					for (RBMap<AnimationTrackEditor::SelectedKey, AnimationTrackEditor::KeyInfo>::Element *E = editor->selection.back(); E; E = E->prev()) {
+						if (E->value().track == track) {
+							float time_offset = animation->track_get_key_time(E->key().track, E->key().key) - timeline->get_value();
+							time_offset += editor->get_moving_selection_offset();
+							float screen_pos = time_offset * scale + limit;
+							KeyInfo ki;
+							ki.track = E->key().track;
+							ki.index = E->key().key;
+							ki.selected = true;
+							ki.screen_pos = screen_pos;
+
+							sorted_keys.push_back(ki);
+						}
+					}
 				}
 
 				sorted_keys.sort();
 
 				for (int i = 0; i < sorted_keys.size(); i++) {
-					float offset = sorted_keys[i].first;
-					int original_index = sorted_keys[i].second;
-					bool selected = editor->is_key_selected(track, original_index);
+					float screen_pos = sorted_keys[i].screen_pos;
+					int key_track = sorted_keys[i].track;
+					int key_index = sorted_keys[i].index;
+					bool selected = sorted_keys[i].selected;
 
 					if (i < sorted_keys.size() - 1) {
-						float offset_n = sorted_keys[i + 1].first;
+						float screen_pos_n = sorted_keys[i + 1].screen_pos;
 
-						int next_original_index = sorted_keys[i + 1].second;
+						int next_key_track = sorted_keys[i + 1].track;
+						int next_key_index = sorted_keys[i + 1].index;
 
-						draw_key_link(original_index, next_original_index, scale, int(offset), int(offset_n), limit, limit_end);
-						draw_key(original_index, scale, int(offset), selected, limit, MIN(offset_n, limit_end));
+						draw_key_link(key_track, next_key_track, key_index, next_key_index, scale, int(screen_pos), int(screen_pos_n), limit, limit_end);
+						draw_key(key_track, key_index, scale, int(screen_pos), selected, limit, MIN(screen_pos_n, limit_end));
 					} else {
-						draw_key(original_index, scale, int(offset), selected, limit, limit_end);
+						draw_key(key_track, key_index, scale, int(screen_pos), selected, limit, limit_end);
 					}
 				}
 			}
@@ -2754,7 +2791,7 @@ bool AnimationTrackEdit::is_key_selectable_by_distance() const {
 	return true;
 }
 
-void AnimationTrackEdit::draw_key_link(int p_index_from, int p_index_to, float p_pixels_sec, int p_x, int p_next_x, int p_clip_left, int p_clip_right) {
+void AnimationTrackEdit::draw_key_link(int p_track_from, int p_track_to, int p_index_from, int p_index_to, float p_pixels_sec, int p_x, int p_next_x, int p_clip_left, int p_clip_right) {
 	if (p_next_x < p_clip_left) {
 		return;
 	}
@@ -2762,9 +2799,9 @@ void AnimationTrackEdit::draw_key_link(int p_index_from, int p_index_to, float p
 		return;
 	}
 
-	Variant current = animation->track_get_key_value(get_track(), p_index_from);
-	Variant next = animation->track_get_key_value(get_track(), p_index_to);
-	if (current != next || animation->track_get_type(get_track()) == Animation::TrackType::TYPE_METHOD) {
+	Variant current = animation->track_get_key_value(p_track_from, p_index_from);
+	Variant next = animation->track_get_key_value(p_track_to, p_index_to);
+	if (current != next || animation->track_get_type(p_track_from) == Animation::TrackType::TYPE_METHOD) {
 		return;
 	}
 
@@ -2777,7 +2814,7 @@ void AnimationTrackEdit::draw_key_link(int p_index_from, int p_index_to, float p
 	draw_line(Point2(from_x + 1, get_size().height / 2), Point2(to_x, get_size().height / 2), color, Math::round(2 * EDSCALE));
 }
 
-void AnimationTrackEdit::draw_key(int p_index, float p_pixels_sec, int p_x, bool p_selected, int p_clip_left, int p_clip_right) {
+void AnimationTrackEdit::draw_key(int p_track, int p_index, float p_pixels_sec, int p_x, bool p_selected, int p_clip_left, int p_clip_right) {
 	if (animation.is_null()) {
 		return;
 	}
@@ -2788,14 +2825,14 @@ void AnimationTrackEdit::draw_key(int p_index, float p_pixels_sec, int p_x, bool
 
 	Ref<Texture2D> icon_to_draw = p_selected ? selected_icon : type_icon;
 
-	if (animation->track_get_type(track) == Animation::TYPE_VALUE && !Math::is_equal_approx(animation->track_get_key_transition(track, p_index), real_t(1.0))) {
+	if (animation->track_get_type(p_track) == Animation::TYPE_VALUE && !Math::is_equal_approx(animation->track_get_key_transition(p_track, p_index), real_t(1.0))) {
 		// Use a different icon for keys with non-linear easing.
 		icon_to_draw = get_editor_theme_icon(p_selected ? SNAME("KeyEasedSelected") : SNAME("KeyValueEased"));
 	}
 
 	// Override type icon for invalid value keys, unless selected.
-	if (!p_selected && animation->track_get_type(track) == Animation::TYPE_VALUE) {
-		const Variant &v = animation->track_get_key_value(track, p_index);
+	if (!p_selected && animation->track_get_type(p_track) == Animation::TYPE_VALUE) {
+		const Variant &v = animation->track_get_key_value(p_track, p_index);
 		Variant::Type valid_type = Variant::NIL;
 		if (!_is_value_key_valid(v, valid_type)) {
 			icon_to_draw = get_editor_theme_icon(SNAME("KeyInvalid"));
@@ -2804,13 +2841,13 @@ void AnimationTrackEdit::draw_key(int p_index, float p_pixels_sec, int p_x, bool
 
 	Vector2 ofs(p_x - icon_to_draw->get_width() / 2, (get_size().height - icon_to_draw->get_height()) / 2);
 
-	if (animation->track_get_type(track) == Animation::TYPE_METHOD) {
+	if (animation->track_get_type(p_track) == Animation::TYPE_METHOD) {
 		const Ref<Font> font = get_theme_font(SceneStringName(font), SNAME("Label"));
 		const int font_size = get_theme_font_size(SceneStringName(font_size), SNAME("Label"));
 		Color color = get_theme_color(SceneStringName(font_color), SNAME("Label"));
 		color.a = 0.5;
 
-		Dictionary d = animation->track_get_key_value(track, p_index);
+		Dictionary d = animation->track_get_key_value(p_track, p_index);
 		String text;
 
 		if (d.has("method")) {
@@ -6426,8 +6463,8 @@ void AnimationTrackEditor::_move_selection_begin() {
 
 void AnimationTrackEditor::_move_selection(float p_offset) {
 	moving_selection_offset = p_offset;
+
 	if (moving_selection_starting_track > -1) {
-		moving_selection_hovered_track = -1;
 		for (int i = 0; i < track_edits.size(); i++) {
 			if (track_edits[i]->is_hovered()) {
 				moving_selection_hovered_track = track_edits[i]->get_track();
@@ -6671,6 +6708,11 @@ void AnimationTrackEditor::_move_selection_commit() {
 	}
 
 	moving_selection = false;
+	moving_selection_offset = 0;
+	moving_selection_starting_track = -1;
+	moving_selection_hovered_track = -1;
+	moving_selection_to_different_track = false;
+
 	undo_redo->add_do_method(this, "_redraw_tracks");
 	undo_redo->add_undo_method(this, "_redraw_tracks");
 
@@ -6686,6 +6728,10 @@ void AnimationTrackEditor::_move_selection_commit() {
 
 void AnimationTrackEditor::_move_selection_cancel() {
 	moving_selection = false;
+	moving_selection_offset = 0;
+	moving_selection_starting_track = -1;
+	moving_selection_hovered_track = -1;
+	moving_selection_to_different_track = false;
 	_redraw_tracks();
 }
 

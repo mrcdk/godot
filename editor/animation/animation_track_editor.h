@@ -526,8 +526,8 @@ public:
 	virtual int get_key_height() const;
 	virtual Rect2 get_key_rect(int p_index, float p_pixels_sec);
 	virtual bool is_key_selectable_by_distance() const;
-	virtual void draw_key_link(int p_index_from, int p_index_to, float p_pixels_sec, int p_x, int p_next_x, int p_clip_left, int p_clip_right);
-	virtual void draw_key(int p_index, float p_pixels_sec, int p_x, bool p_selected, int p_clip_left, int p_clip_right);
+	virtual void draw_key_link(int p_track_from, int p_track_to, int p_index_from, int p_index_to, float p_pixels_sec, int p_x, int p_next_x, int p_clip_left, int p_clip_right);
+	virtual void draw_key(int p_track, int p_index, float p_pixels_sec, int p_x, bool p_selected, int p_clip_left, int p_clip_right);
 	virtual void draw_bg(int p_clip_left, int p_clip_right);
 	virtual void draw_fg(int p_clip_left, int p_clip_right);
 	virtual void build_track_menu(PopupMenu *p_menu, int p_hovering_key_idx, bool p_selected);
@@ -613,6 +613,7 @@ class AnimationTrackEditor : public VBoxContainer {
 	friend class AnimationTimelineEdit;
 	friend class AnimationBezierTrackEdit;
 	friend class AnimationMarkerKeyEditEditor;
+	friend class AnimationTrackEdit;
 
 	Ref<Animation> animation;
 	bool read_only = false;
