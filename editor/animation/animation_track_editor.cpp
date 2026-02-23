@@ -34,6 +34,7 @@
 #include "core/config/project_settings.h"
 #include "core/error/error_macros.h"
 #include "core/input/input.h"
+#include "core/object/object.h"
 #include "core/string/node_path.h"
 #include "core/string/translation_server.h"
 #include "core/variant/dictionary.h"
@@ -445,6 +446,11 @@ bool AnimationTrackKeyEdit::_set(const StringName &p_name, const Variant &p_valu
 					undo_redo->add_undo_method(current_event.ptr(), "set_event_name", current_event->get_event_name());
 					undo_redo->add_do_method(this, "_update_obj", animation);
 					undo_redo->add_undo_method(this, "_update_obj", animation);
+
+					// We are modifying the animation event resource directly. Queue a redrawing the tracks to update them.
+					undo_redo->add_do_method(editor, "_redraw_tracks");
+					undo_redo->add_undo_method(editor, "_redraw_tracks");
+
 					undo_redo->commit_action();
 
 					setting = false;
@@ -457,6 +463,11 @@ bool AnimationTrackKeyEdit::_set(const StringName &p_name, const Variant &p_valu
 					undo_redo->add_undo_method(current_event.ptr(), "set_tag_color", current_event->get_tag_color());
 					undo_redo->add_do_method(this, "_update_obj", animation);
 					undo_redo->add_undo_method(this, "_update_obj", animation);
+
+					// We are modifying the animation event resource directly. Queue a redrawing the tracks to update them.
+					undo_redo->add_do_method(editor, "_redraw_tracks");
+					undo_redo->add_undo_method(editor, "_redraw_tracks");
+
 					undo_redo->commit_action();
 
 					setting = false;
@@ -827,6 +838,7 @@ void AnimationMultiTrackKeyEdit::_key_ofs_changed(const Ref<Animation> &p_anim, 
 bool AnimationMultiTrackKeyEdit::_set(const StringName &p_name, const Variant &p_value) {
 	bool update_obj = false;
 	bool change_notify_deserved = false;
+	bool redraw_tracks = false;
 	for (const KeyValue<int, List<float>> &E : key_ofs_map) {
 		int track = E.key;
 		for (const float &key_ofs : E.value) {
@@ -1069,6 +1081,8 @@ bool AnimationMultiTrackKeyEdit::_set(const StringName &p_name, const Variant &p
 							}
 							undo_redo->add_do_method(current_event.ptr(), "set_event_name", p_value);
 							undo_redo->add_undo_method(current_event.ptr(), "set_event_name", current_event->get_event_name());
+							// We are modifying the animation event resource directly. Queue a redrawing the tracks to update them.
+							redraw_tracks = true;
 							update_obj = true;
 						}
 						if (name == "tag_color") {
@@ -1078,6 +1092,8 @@ bool AnimationMultiTrackKeyEdit::_set(const StringName &p_name, const Variant &p
 							}
 							undo_redo->add_do_method(current_event.ptr(), "set_tag_color", p_value);
 							undo_redo->add_undo_method(current_event.ptr(), "set_tag_color", current_event->get_tag_color());
+							// We are modifying the animation event resource directly. Queue a redrawing the tracks to update them.
+							redraw_tracks = true;
 							update_obj = true;
 						}
 					}
@@ -1091,6 +1107,11 @@ bool AnimationMultiTrackKeyEdit::_set(const StringName &p_name, const Variant &p
 		if (update_obj) {
 			undo_redo->add_do_method(this, "_update_obj", animation);
 			undo_redo->add_undo_method(this, "_update_obj", animation);
+		}
+
+		if (redraw_tracks) {
+			undo_redo->add_do_method(editor, "_redraw_tracks");
+			undo_redo->add_undo_method(editor, "_redraw_tracks");
 		}
 
 		undo_redo->commit_action();
