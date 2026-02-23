@@ -31,21 +31,28 @@
 #pragma once
 
 #include "core/io/resource.h"
+#include "core/variant/dictionary.h"
 
 class AnimationEvent : public Resource {
 	GDCLASS(AnimationEvent, Resource);
 
-	StringName event_name;
-	Color tag_color;
+	Dictionary _data;
+
+	void _set_data(const Dictionary &p_data);
+	Dictionary _get_data() const;
 
 protected:
 	static void _bind_methods();
 
+	GDVIRTUAL0R(String, _get_default_event_name)
+	GDVIRTUAL0R(Color, _get_default_tag_color)
+
 public:
-	void set_event_name(const StringName &p_event_name);
-	StringName get_event_name() const;
+	void set_event_name(const String &p_event_name);
+	String get_event_name();
+
 	void set_tag_color(const Color &p_color);
-	Color get_tag_color() const;
+	Color get_tag_color();
 
 	AnimationEvent();
 };

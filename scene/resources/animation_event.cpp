@@ -30,7 +30,8 @@
 
 #include "animation_event.h"
 #include "core/object/object.h"
-#include "core/string/string_name.h"
+#include "core/string/ustring.h"
+#include "core/variant/dictionary.h"
 
 void AnimationEvent::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_event_name", "event_name"), &AnimationEvent::set_event_name);
@@ -39,27 +40,55 @@ void AnimationEvent::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_tag_color", "tag_color"), &AnimationEvent::set_tag_color);
 	ClassDB::bind_method(D_METHOD("get_tag_color"), &AnimationEvent::get_tag_color);
 
-	ADD_PROPERTY(PropertyInfo(Variant::STRING_NAME, "event_name", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT), "set_event_name", "get_event_name");
-	ADD_PROPERTY(PropertyInfo(Variant::COLOR, "tag_color", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT), "set_tag_color", "get_tag_color");
+	ClassDB::bind_method(D_METHOD("_set_data", "data"), &AnimationEvent::_set_data);
+	ClassDB::bind_method(D_METHOD("_get_data"), &AnimationEvent::_get_data);
+
+	ADD_PROPERTY(PropertyInfo(Variant::STRING, "event_name", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR), "set_event_name", "get_event_name");
+	ADD_PROPERTY(PropertyInfo(Variant::COLOR, "tag_color", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR), "set_tag_color", "get_tag_color");
+	ADD_PROPERTY(PropertyInfo(Variant::DICTIONARY, "_data", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NO_EDITOR | PROPERTY_USAGE_INTERNAL), "_set_data", "_get_data");
+
+	GDVIRTUAL_BIND(_get_default_event_name);
+	GDVIRTUAL_BIND(_get_default_tag_color);
 }
 
-void AnimationEvent::set_event_name(const StringName &p_event_name) {
-	event_name = p_event_name;
+void AnimationEvent::set_event_name(const String &p_event_name) {
+	_data.set("event_name", p_event_name);
 	emit_changed();
 }
-StringName AnimationEvent::get_event_name() const {
-	return event_name;
+String AnimationEvent::get_event_name() {
+	if (!_data.has("event_name")) {
+		if (GDVIRTUAL_IS_OVERRIDDEN(_get_default_event_name)) {
+			String ret;
+			GDVIRTUAL_CALL(_get_default_event_name, ret);
+			set_event_name(ret);
+		}
+	}
+	return _data.get("event_name", "");
 }
 
 void AnimationEvent::set_tag_color(const Color &p_color) {
-	tag_color = p_color;
+	_data.set("tag_color", p_color);
 	emit_changed();
 }
-Color AnimationEvent::get_tag_color() const {
-	return tag_color;
+Color AnimationEvent::get_tag_color() {
+	if (!_data.has("tag_color")) {
+		if (GDVIRTUAL_IS_OVERRIDDEN(_get_default_tag_color)) {
+			Color ret;
+			GDVIRTUAL_CALL(_get_default_tag_color, ret);
+			set_tag_color(ret);
+		}
+	}
+	return _data.get("tag_color", Color(1, 1, 1, 1));
+}
+
+void AnimationEvent::_set_data(const Dictionary &p_data) {
+	_data = p_data;
+	emit_changed();
+}
+
+Dictionary AnimationEvent::_get_data() const {
+	return _data;
 }
 
 AnimationEvent::AnimationEvent() {
-	event_name = StringName();
-	tag_color = Color(1, 1, 1);
 }

@@ -4027,7 +4027,7 @@ StringName Animation::animation_track_get_key_animation(int p_track, int p_key) 
 	return at->values[p_key].value;
 }
 
-int Animation::event_track_insert_key(int p_track, double p_time, const Ref<AnimationEvent> &p_event) {
+int Animation::event_track_insert_key_event(int p_track, double p_time, const Ref<AnimationEvent> &p_event) {
 	ERR_FAIL_UNSIGNED_INDEX_V((uint32_t)p_track, tracks.size(), -1);
 	Track *t = tracks[p_track];
 	ERR_FAIL_COND_V(t->type != TYPE_EVENT, -1);
@@ -4272,7 +4272,7 @@ void Animation::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("animation_track_set_key_animation", "track_idx", "key_idx", "animation"), &Animation::animation_track_set_key_animation);
 	ClassDB::bind_method(D_METHOD("animation_track_get_key_animation", "track_idx", "key_idx"), &Animation::animation_track_get_key_animation);
 
-	ClassDB::bind_method(D_METHOD("event_track_insert_key", "track_idx", "time", "event"), &Animation::event_track_insert_key);
+	ClassDB::bind_method(D_METHOD("event_track_insert_key_event", "track_idx", "time", "event"), &Animation::event_track_insert_key_event);
 	ClassDB::bind_method(D_METHOD("event_track_set_key_event", "track_idx", "key_idx", "event"), &Animation::event_track_set_key_event);
 	ClassDB::bind_method(D_METHOD("event_track_get_key_event", "track_idx", "key_idx"), &Animation::event_track_get_key_event);
 
