@@ -1027,6 +1027,17 @@ public:
 	bool is_global_library_read_only() const;
 	void popup_read_only_dialog();
 
+	struct KeyDrawInfo {
+		float screen_pos;
+		int track;
+		int index;
+		bool selected;
+
+		bool operator<(const KeyDrawInfo &p_key) const { return screen_pos == p_key.screen_pos ? index < p_key.index : screen_pos < p_key.screen_pos; }
+	};
+
+	void get_keys_to_draw_in_track(int p_track, Vector<KeyDrawInfo> *r_keys);
+
 	MenuButton *get_edit_menu();
 	AnimationTrackEditor();
 	~AnimationTrackEditor();

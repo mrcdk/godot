@@ -2462,59 +2462,10 @@ void AnimationTrackEdit::_notification(int p_what) {
 			{
 				float scale = timeline->get_zoom_scale();
 
-				struct KeyInfo {
-					float screen_pos;
-					int track;
-					int index;
-					bool selected;
-
-					bool operator<(const KeyInfo &p_key) const { return screen_pos == p_key.screen_pos ? index < p_key.index : screen_pos < p_key.screen_pos; }
-				};
-
 				// Pre-calculate the actual order of the keys. This is needed as a move might be happening
 				// which might cause the keys to be in a different order than their current indices.
-
-				Vector<KeyInfo> sorted_keys;
-
-				for (int i = 0; i < animation->track_get_key_count(track); i++) {
-					float time_offset = animation->track_get_key_time(track, i) - timeline->get_value();
-					bool selected = editor->is_key_selected(track, i);
-					if (selected && editor->is_moving_selection()) {
-						if (editor->is_moving_selection_to_different_track() && editor->get_moving_selection_hovered_track() != track) {
-							// skip keys in a different track
-							continue;
-						}
-						time_offset += editor->get_moving_selection_offset();
-					}
-
-					float screen_pos = time_offset * scale + limit;
-
-					KeyInfo ki;
-					ki.track = track;
-					ki.index = i;
-					ki.selected = selected;
-					ki.screen_pos = screen_pos;
-
-					sorted_keys.push_back(ki);
-				}
-
-				if (editor->is_moving_selection() && editor->is_moving_selection_to_different_track()) {
-					for (RBMap<AnimationTrackEditor::SelectedKey, AnimationTrackEditor::KeyInfo>::Element *E = editor->selection.back(); E; E = E->prev()) {
-						if (E->value().track == track) {
-							float time_offset = animation->track_get_key_time(E->key().track, E->key().key) - timeline->get_value();
-							time_offset += editor->get_moving_selection_offset();
-							float screen_pos = time_offset * scale + limit;
-							KeyInfo ki;
-							ki.track = E->key().track;
-							ki.index = E->key().key;
-							ki.selected = true;
-							ki.screen_pos = screen_pos;
-
-							sorted_keys.push_back(ki);
-						}
-					}
-				}
-
+				Vector<AnimationTrackEditor::KeyDrawInfo> sorted_keys;
+				editor->get_keys_to_draw_in_track(track, &sorted_keys);
 				sorted_keys.sort();
 
 				for (int i = 0; i < sorted_keys.size(); i++) {
@@ -8424,6 +8375,50 @@ void AnimationTrackEditor::_pick_track_select_recursive(TreeItem *p_item, const 
 
 void AnimationTrackEditor::popup_read_only_dialog() {
 	read_only_dialog->popup_centered(Size2(200, 100) * EDSCALE);
+}
+
+void AnimationTrackEditor::get_keys_to_draw_in_track(int p_track, Vector<KeyDrawInfo> *r_keys) {
+	float limit = timeline->get_name_limit();
+	float zoom_scale = timeline->get_zoom_scale();
+
+	for (int i = 0; i < animation->track_get_key_count(p_track); i++) {
+		float time_offset = animation->track_get_key_time(p_track, i) - timeline->get_value();
+		bool selected = is_key_selected(p_track, i);
+		if (selected && is_moving_selection()) {
+			if (is_moving_selection_to_different_track() && get_moving_selection_hovered_track() != p_track) {
+				// skip keys in a different track
+				continue;
+			}
+			time_offset += get_moving_selection_offset();
+		}
+
+		float screen_pos = time_offset * zoom_scale + limit;
+
+		KeyDrawInfo ki;
+		ki.track = p_track;
+		ki.index = i;
+		ki.selected = selected;
+		ki.screen_pos = screen_pos;
+
+		r_keys->push_back(ki);
+	}
+
+	if (is_moving_selection() && is_moving_selection_to_different_track()) {
+		for (RBMap<SelectedKey, KeyInfo>::Element *E = selection.back(); E; E = E->prev()) {
+			if (E->value().track == p_track) {
+				float time_offset = animation->track_get_key_time(E->key().track, E->key().key) - timeline->get_value();
+				time_offset += get_moving_selection_offset();
+				float screen_pos = time_offset * zoom_scale + limit;
+				KeyDrawInfo ki;
+				ki.track = E->key().track;
+				ki.index = E->key().key;
+				ki.selected = true;
+				ki.screen_pos = screen_pos;
+
+				r_keys->push_back(ki);
+			}
+		}
+	}
 }
 
 AnimationTrackEditor::AnimationTrackEditor() {
