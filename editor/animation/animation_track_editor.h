@@ -31,12 +31,14 @@
 #pragma once
 
 #include "core/templates/rb_map.h"
+#include "core/variant/dictionary.h"
 #include "editor/editor_data.h"
 #include "editor/inspector/editor_properties.h"
 #include "editor/inspector/property_selector.h"
 #include "scene/3d/node_3d.h"
 #include "scene/gui/control.h"
 #include "scene/gui/menu_button.h"
+#include "scene/gui/popup_menu.h"
 #include "scene/gui/scroll_bar.h"
 #include "scene/gui/tree.h"
 #include "scene/resources/animation.h"
@@ -456,7 +458,7 @@ class AnimationTrackEdit : public Control {
 	Ref<Texture2D> icon_cache;
 	String path_cache;
 
-	void _menu_selected(int p_index);
+	void _menu_selected(int p_index, PopupMenu *p_menu);
 
 	void _path_submitted(const String &p_text);
 	void _play_position_draw();
@@ -469,7 +471,6 @@ class AnimationTrackEdit : public Control {
 	Ref<Texture2D> _get_key_type_icon() const;
 
 	mutable int dropping_at = 0;
-	float insert_at_pos = 0.0f;
 	bool moving_selection_attempt = false;
 	bool moving_selection_effective = false;
 	float moving_selection_pivot = 0.0f;
@@ -509,6 +510,7 @@ protected:
 	};
 
 	int hovering_key_idx = -1;
+	float insert_at_pos = 0.0f;
 
 	static void _bind_methods();
 	void _notification(int p_what);
@@ -531,7 +533,7 @@ public:
 	virtual void draw_bg(int p_clip_left, int p_clip_right);
 	virtual void draw_fg(int p_clip_left, int p_clip_right);
 	virtual void build_track_menu(PopupMenu *p_menu, int p_hovering_key_idx, bool p_selected);
-	virtual void menu_selected(int p_index);
+	virtual void menu_selected(int p_index, PopupMenu *p_menu);
 
 	bool is_hovered() const { return hovered; }
 
@@ -752,7 +754,7 @@ class AnimationTrackEditor : public VBoxContainer {
 
 	float insert_key_from_track_call_ofs = 0.0f;
 	int insert_key_from_track_call_track = 0;
-	void _insert_key_from_track(float p_ofs, int p_track);
+	void _insert_key_from_track(float p_ofs, const Dictionary &p_extra_data, int p_track);
 	void _add_method_key(const String &p_method);
 
 	void _fetch_value_track_options(const NodePath &p_path, Animation::UpdateMode *r_update_mode, Animation::InterpolationType *r_interpolation_type, bool *r_loop_wrap);

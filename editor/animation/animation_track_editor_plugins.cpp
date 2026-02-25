@@ -37,6 +37,7 @@
 #include "core/variant/variant.h"
 #include "editor/animation/animation_track_editor.h"
 #include "editor/audio/audio_stream_preview.h"
+#include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
 #include "editor/editor_undo_redo_manager.h"
 #include "editor/inspector/editor_resource_preview.h"
@@ -45,6 +46,7 @@
 #include "scene/2d/sprite_2d.h"
 #include "scene/3d/sprite_3d.h"
 #include "scene/animation/animation_player.h"
+#include "scene/gui/control.h"
 #include "scene/gui/popup_menu.h"
 #include "scene/resources/text_line.h"
 #include "servers/audio/audio_stream.h"
@@ -1360,7 +1362,7 @@ int AnimationTrackEditTypeEvent::get_key_height() const {
 }
 
 Rect2 AnimationTrackEditTypeEvent::get_key_rect(int p_index, float p_pixels_sec) {
-	Rect2 rect(0, 0, get_size().y, get_size().y);
+	Rect2 rect(0, 0, get_size().y + 4, get_size().y);
 
 	Dictionary tvalue = get_animation()->track_get_key_value(get_track(), p_index);
 	Ref<AnimationEvent> event = tvalue.get("event", Ref<AnimationEvent>());
@@ -1370,7 +1372,9 @@ Rect2 AnimationTrackEditTypeEvent::get_key_rect(int p_index, float p_pixels_sec)
 				Ref<Font> font = get_theme_font(SceneStringName(font), SNAME("Label"));
 				int font_size = get_theme_font_size(SceneStringName(font_size), SNAME("Label"));
 				Size2 size = font->get_string_size(event->get_event_name(), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size);
-				rect.size.x = size.x + (rect.size.y / 2);
+				if (size.x > rect.size.x) {
+					rect.size.x = MAX(rect.size.x, size.x + (rect.size.y / 2));
+				}
 			}
 		}
 	} else {
@@ -1424,12 +1428,15 @@ void AnimationTrackEditTypeEvent::draw_key(int p_track, int p_index, float p_pix
 
 	if (!get_editor()->is_function_name_pressed() && !event_name.is_empty()) {
 		text_size = font->get_string_size(event_name);
-		rect_width = MAX(0, MIN(text_size.x + text_offset_x + 4, p_clip_right - p_x - 2));
+		rect_width = MAX(rect_height, MIN(text_size.x + text_offset_x + 4, p_clip_right - p_x - 2));
 		max_text_width = MAX(0, rect_width - text_offset_x - 4);
 		int diff = p_x + text_offset_x - p_clip_left;
 		if (diff < 0) {
 			text_x = p_clip_left;
 			max_text_width = MAX(0, max_text_width + diff);
+		}
+		if (max_text_width > p_clip_right - text_x) {
+			max_text_width = MAX(0, p_clip_right - text_x);
 		}
 	}
 
@@ -1480,7 +1487,6 @@ void AnimationTrackEditTypeEvent::draw_key(int p_track, int p_index, float p_pix
 		text_buf->clear();
 		text_buf->add_string(event_name, font, font_size);
 		Vector2 p(text_x, int(get_size().height - text_size.y) / 2);
-		// draw_rect(Rect2(p, Size2(max_text_width, text_size.y)), Color(1, 0, 0));
 		text_buf->draw(get_canvas_item(), p, font_color);
 	}
 }
@@ -1493,12 +1499,22 @@ void AnimationTrackEditTypeEvent::build_track_menu(PopupMenu *p_menu, int p_hove
 	if (p_hovering_key_idx > -1) {
 		p_menu->add_icon_item(get_editor_theme_icon(SNAME("AnimationAutoFit")), TTR("Convert To Range Event"), MENU_CONVERT_RANGE);
 	} else {
-		p_menu->add_icon_item(get_editor_theme_icon(SNAME("AnimationEvent")), TTR("Insert Empty Event"), MENU_KEY_INSERT);
-		// List<StringName> subclasses;
-		// ScriptServer::get_indirect_inheriters_list(SNAME("AnimationEvent"), &subclasses);
-		// for (const StringName &subclass : subclasses) {
-		// 	p_menu->add_icon_item(get_editor_theme_icon(SNAME("AnimationEvent")), vformat(TTR("Insert %s"), String(subclass).capitalize()), MENU_KEY_INSERT);
-		// }
+		Ref<Texture2D> base_icon = get_editor_theme_icon(SNAME("AnimationEvent"));
+		p_menu->add_icon_item(base_icon, TTR("Insert Event"), MENU_KEY_INSERT);
+		List<StringName> subclasses;
+		ScriptServer::get_indirect_inheriters_list(SNAME("AnimationEvent"), &subclasses);
+		int i = 0;
+		for (const StringName &E : subclasses) {
+			if (!ScriptServer::is_global_class_tool(E)) {
+				continue;
+			}
+			Ref<Texture2D> icon = EditorNode::get_singleton()->get_class_icon(E, SNAME("AnimationEvent"));
+			int id = MENU_EXTRA_EVENT_TYPES + i++;
+			p_menu->add_icon_item(icon, vformat(TTR("Insert %s"), String(E).capitalize()), id);
+			int idx = p_menu->get_item_index(id);
+			p_menu->set_item_icon_max_width(idx, base_icon->get_width());
+			p_menu->set_item_metadata(idx, E);
+		}
 	}
 	if (p_selected || get_editor()->is_selection_active()) {
 		p_menu->add_separator();
@@ -1515,8 +1531,15 @@ void AnimationTrackEditTypeEvent::build_track_menu(PopupMenu *p_menu, int p_hove
 	}
 }
 
-void AnimationTrackEditTypeEvent::menu_selected(int p_index) {
-	switch (p_index) {
+void AnimationTrackEditTypeEvent::menu_selected(int p_id, PopupMenu *p_menu) {
+	if (p_id >= MENU_EXTRA_EVENT_TYPES) {
+		Dictionary extra_data;
+		String type = p_menu->get_item_metadata(p_menu->get_item_index(p_id));
+		extra_data["type"] = type;
+		emit_signal(SNAME("insert_key"), insert_at_pos, extra_data);
+		return;
+	}
+	switch (p_id) {
 		case MENU_CONVERT_SIMPLE: {
 			print_line("Convert to simple event");
 		} break;
@@ -1524,8 +1547,154 @@ void AnimationTrackEditTypeEvent::menu_selected(int p_index) {
 			print_line("Convert to range event");
 		} break;
 		default: {
-			AnimationTrackEdit::menu_selected(p_index);
+			AnimationTrackEdit::menu_selected(p_id, p_menu);
 		} break;
+	}
+}
+
+void AnimationTrackEditTypeEvent::gui_input(const Ref<InputEvent> &p_event) {
+	AnimationTrackEdit::gui_input(p_event);
+	return;
+	ERR_FAIL_COND(p_event.is_null());
+
+	Ref<InputEventMouseMotion> mm = p_event;
+	if (!len_resizing && mm.is_valid()) {
+		bool use_hsize_cursor = false;
+		for (int i = 0; i < get_animation()->track_get_key_count(get_track()); i++) {
+			Ref<AudioStream> stream = get_animation()->audio_track_get_key_stream(get_track(), i);
+
+			if (stream.is_null()) {
+				continue;
+			}
+
+			float len = stream->get_length();
+			if (len == 0) {
+				continue;
+			}
+
+			float start_ofs = get_animation()->audio_track_get_key_start_offset(get_track(), i);
+			float end_ofs = get_animation()->audio_track_get_key_end_offset(get_track(), i);
+			len -= end_ofs;
+			len -= start_ofs;
+
+			if (get_animation()->track_get_key_count(get_track()) > i + 1) {
+				len = MIN(len, get_animation()->track_get_key_time(get_track(), i + 1) - get_animation()->track_get_key_time(get_track(), i));
+			}
+
+			float ofs = get_animation()->track_get_key_time(get_track(), i);
+
+			ofs -= get_timeline()->get_value();
+			ofs *= get_timeline()->get_zoom_scale();
+			ofs += get_timeline()->get_name_limit();
+
+			int end = ofs + len * get_timeline()->get_zoom_scale();
+
+			if (end >= get_timeline()->get_name_limit() && end <= get_size().width - get_timeline()->get_buttons_width() && Math::abs(mm->get_position().x - end) < 5 * EDSCALE) {
+				len_resizing_start = false;
+				use_hsize_cursor = true;
+				len_resizing_index = i;
+			}
+
+			if (ofs >= get_timeline()->get_name_limit() && ofs <= get_size().width - get_timeline()->get_buttons_width() && Math::abs(mm->get_position().x - ofs) < 5 * EDSCALE) {
+				len_resizing_start = true;
+				use_hsize_cursor = true;
+				len_resizing_index = i;
+			}
+		}
+		over_drag_position = use_hsize_cursor;
+	}
+
+	if (len_resizing && mm.is_valid()) {
+		// Rezising index is some.
+		len_resizing_rel += mm->get_relative().x;
+		float ofs_local = len_resizing_rel / get_timeline()->get_zoom_scale();
+		float prev_ofs_start = get_animation()->audio_track_get_key_start_offset(get_track(), len_resizing_index);
+		float prev_ofs_end = get_animation()->audio_track_get_key_end_offset(get_track(), len_resizing_index);
+		Ref<AudioStream> stream = get_animation()->audio_track_get_key_stream(get_track(), len_resizing_index);
+		float len = stream->get_length();
+		if (len == 0) {
+			Ref<AudioStreamPreview> preview = AudioStreamPreviewGenerator::get_singleton()->generate_preview(stream);
+			float preview_len = preview->get_length();
+			len = preview_len;
+		}
+
+		if (len_resizing_start) {
+			len_resizing_rel = CLAMP(ofs_local, -prev_ofs_start, len - prev_ofs_end - prev_ofs_start) * get_timeline()->get_zoom_scale();
+		} else {
+			len_resizing_rel = CLAMP(ofs_local, -(len - prev_ofs_end - prev_ofs_start), prev_ofs_end) * get_timeline()->get_zoom_scale();
+		}
+
+		queue_redraw();
+		accept_event();
+		return;
+	}
+
+	Ref<InputEventMouseButton> mb = p_event;
+	if (mb.is_valid() && mb->is_pressed() && mb->get_button_index() == MouseButton::LEFT && over_drag_position) {
+		len_resizing = true;
+		// In case if resizing index is not set yet reset the flag.
+		if (len_resizing_index < 0) {
+			len_resizing = false;
+			return;
+		}
+		len_resizing_from_px = mb->get_position().x;
+		len_resizing_rel = 0;
+		queue_redraw();
+		accept_event();
+		return;
+	}
+
+	EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
+	if (len_resizing && mb.is_valid() && !mb->is_pressed() && mb->get_button_index() == MouseButton::LEFT) {
+		if (len_resizing_rel == 0 || len_resizing_index < 0) {
+			len_resizing = false;
+			return;
+		}
+
+		if (len_resizing_start) {
+			float ofs_local = len_resizing_rel / get_timeline()->get_zoom_scale();
+			float prev_ofs = get_animation()->audio_track_get_key_start_offset(get_track(), len_resizing_index);
+			float prev_time = get_animation()->track_get_key_time(get_track(), len_resizing_index);
+			float new_ofs = prev_ofs + ofs_local;
+			float new_time = prev_time + ofs_local;
+			if (prev_time != new_time) {
+				undo_redo->create_action(TTR("Change Audio Track Clip Start Offset"));
+
+				undo_redo->add_do_method(get_animation().ptr(), "track_set_key_time", get_track(), len_resizing_index, new_time);
+				undo_redo->add_undo_method(get_animation().ptr(), "track_set_key_time", get_track(), len_resizing_index, prev_time);
+
+				undo_redo->add_do_method(get_animation().ptr(), "audio_track_set_key_start_offset", get_track(), len_resizing_index, new_ofs);
+				undo_redo->add_undo_method(get_animation().ptr(), "audio_track_set_key_start_offset", get_track(), len_resizing_index, prev_ofs);
+
+				undo_redo->commit_action();
+			}
+		} else {
+			float ofs_local = -len_resizing_rel / get_timeline()->get_zoom_scale();
+			float prev_ofs = get_animation()->audio_track_get_key_end_offset(get_track(), len_resizing_index);
+			float new_ofs = prev_ofs + ofs_local;
+			if (prev_ofs != new_ofs) {
+				undo_redo->create_action(TTR("Change Audio Track Clip End Offset"));
+				undo_redo->add_do_method(get_animation().ptr(), "audio_track_set_key_end_offset", get_track(), len_resizing_index, new_ofs);
+				undo_redo->add_undo_method(get_animation().ptr(), "audio_track_set_key_end_offset", get_track(), len_resizing_index, prev_ofs);
+				undo_redo->commit_action();
+			}
+		}
+
+		len_resizing_index = -1;
+		len_resizing = false;
+		queue_redraw();
+		accept_event();
+		return;
+	}
+
+	AnimationTrackEdit::gui_input(p_event);
+}
+
+Control::CursorShape AnimationTrackEditTypeEvent::get_cursor_shape(const Point2 &p_pos) const {
+	if (over_drag_position || len_resizing) {
+		return Control::CURSOR_HSIZE;
+	} else {
+		return get_default_cursor_shape();
 	}
 }
 

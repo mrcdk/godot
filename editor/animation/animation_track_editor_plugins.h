@@ -31,6 +31,7 @@
 #pragma once
 
 #include "editor/animation/animation_track_editor.h"
+#include "scene/gui/popup_menu.h"
 
 class AnimationTrackEditBool : public AnimationTrackEdit {
 	GDCLASS(AnimationTrackEditBool, AnimationTrackEdit);
@@ -158,19 +159,31 @@ class AnimationTrackEditTypeEvent : public AnimationTrackEdit {
 
 	Ref<TextLine> text_buf;
 
+	bool len_resizing = false;
+	bool len_resizing_start = false;
+	int len_resizing_index = 0;
+	float len_resizing_from_px = 0.0f;
+	float len_resizing_rel = 0.0f;
+	bool over_drag_position = false;
+
 	enum {
 		MENU_CONVERT_SIMPLE = MENU_MAX,
 		MENU_CONVERT_RANGE,
+		MENU_EXTRA_EVENT_TYPES = 1000,
 	};
 
 public:
+	virtual void gui_input(const Ref<InputEvent> &p_event) override;
+
 	virtual int get_key_height() const override;
 	virtual Rect2 get_key_rect(int p_index, float p_pixels_sec) override;
 	virtual bool is_key_selectable_by_distance() const override;
 	virtual void draw_key(int p_track, int p_index, float p_pixels_sec, int p_x, bool p_selected, int p_clip_left, int p_clip_right) override;
 	virtual void draw_key_link(int p_track_from, int p_track_to, int p_index_from, int p_index_to, float p_pixels_sec, int p_x, int p_next_x, int p_clip_left, int p_clip_right) override;
 	virtual void build_track_menu(PopupMenu *p_menu, int p_hovering_key_idx, bool p_selected) override;
-	virtual void menu_selected(int p_index) override;
+	virtual void menu_selected(int p_index, PopupMenu *p_menu) override;
+
+	virtual CursorShape get_cursor_shape(const Point2 &p_pos) const override;
 
 	AnimationTrackEditTypeEvent();
 };

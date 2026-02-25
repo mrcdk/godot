@@ -36,7 +36,9 @@
 #include "core/input/input.h"
 #include "core/math/math_defs.h"
 #include "core/math/math_funcs.h"
+#include "core/object/class_db.h"
 #include "core/object/object.h"
+#include "core/object/script_language.h"
 #include "core/string/node_path.h"
 #include "core/string/print_string.h"
 #include "core/string/translation_server.h"
@@ -64,6 +66,7 @@
 #include "scene/gui/grid_container.h"
 #include "scene/gui/option_button.h"
 #include "scene/gui/panel_container.h"
+#include "scene/gui/popup_menu.h"
 #include "scene/gui/separator.h"
 #include "scene/gui/slider.h"
 #include "scene/gui/spin_box.h"
@@ -74,6 +77,7 @@
 #include "scene/resources/animation_event.h"
 #include "servers/audio/audio_stream.h"
 #include "servers/display/display_server.h"
+#include <cstddef>
 
 constexpr double FPS_DECIMAL = 1.0;
 constexpr double SECOND_DECIMAL = 0.0001;
@@ -442,45 +446,24 @@ bool AnimationTrackKeyEdit::_set(const StringName &p_name, const Variant &p_valu
 		} break;
 		case Animation::TYPE_EVENT: {
 			Ref<AnimationEvent> current_event = animation->event_track_get_key_event(track, key);
-			if (current_event.is_valid()) {
-				if (name == "event_name") {
-					setting = true;
-					undo_redo->create_action(TTR("Animation Change Keyframe Value"), UndoRedo::MERGE_ENDS);
-					undo_redo->add_do_method(current_event.ptr(), "set_event_name", p_value);
-					undo_redo->add_undo_method(current_event.ptr(), "set_event_name", current_event->get_event_name());
-					undo_redo->add_do_method(this, "_update_obj", animation);
-					undo_redo->add_undo_method(this, "_update_obj", animation);
-
-					// We are modifying the animation event resource directly. Queue a redrawing the tracks to update them.
-					undo_redo->add_do_method(editor, "_redraw_tracks");
-					undo_redo->add_undo_method(editor, "_redraw_tracks");
-
-					undo_redo->commit_action();
-
-					setting = false;
-					return true;
-				}
-				if (name == "tag_color") {
-					setting = true;
-					undo_redo->create_action(TTR("Animation Change Keyframe Value"), UndoRedo::MERGE_ENDS);
-					undo_redo->add_do_method(current_event.ptr(), "set_tag_color", p_value);
-					undo_redo->add_undo_method(current_event.ptr(), "set_tag_color", current_event->get_tag_color());
-					undo_redo->add_do_method(this, "_update_obj", animation);
-					undo_redo->add_undo_method(this, "_update_obj", animation);
-
-					// We are modifying the animation event resource directly. Queue a redrawing the tracks to update them.
-					undo_redo->add_do_method(editor, "_redraw_tracks");
-					undo_redo->add_undo_method(editor, "_redraw_tracks");
-
-					undo_redo->commit_action();
-
-					setting = false;
-					return true;
-				}
-			}
-			if (name == "event") {
-				Ref<AnimationEvent> new_event = p_value;
+			if (name == "event_type") {
 				setting = true;
+
+				Variant new_event;
+				if (ScriptServer::is_global_class(p_value)) {
+					new_event = EditorNode::get_editor_data().script_class_instance(p_value);
+				} else {
+					new_event = ClassDB::instantiate(p_value);
+				}
+				EditorNode::get_editor_data().instantiate_object_properties(new_event);
+
+				if (current_event.is_valid()) {
+					Ref<AnimationEvent> r = Object::cast_to<AnimationEvent>(new_event);
+					r->set_event_name(current_event->get_event_name());
+					r->set_tag_color(current_event->get_tag_color());
+					r->set_duration(current_event->get_duration());
+				}
+
 				undo_redo->create_action(TTR("Animation Change Keyframe Value"), UndoRedo::MERGE_ENDS);
 				undo_redo->add_do_method(animation.ptr(), "event_track_set_key_event", track, key, new_event);
 				undo_redo->add_undo_method(animation.ptr(), "event_track_set_key_event", track, key, current_event);
@@ -490,6 +473,18 @@ bool AnimationTrackKeyEdit::_set(const StringName &p_name, const Variant &p_valu
 
 				setting = false;
 				notify_change();
+				return true;
+			} else if (current_event.is_valid()) {
+				setting = true;
+				undo_redo->create_action(TTR("Animation Change Keyframe Value"), UndoRedo::MERGE_ENDS);
+				Variant prev = animation->event_track_get_key_event_param(track, key, name);
+				undo_redo->add_do_method(animation.ptr(), "event_track_set_key_event_param", track, key, name, p_value);
+				undo_redo->add_undo_method(animation.ptr(), "event_track_set_key_event_param", track, key, name, prev);
+				undo_redo->add_do_method(this, "_update_obj", animation);
+				undo_redo->add_undo_method(this, "_update_obj", animation);
+				undo_redo->commit_action();
+
+				setting = false;
 				return true;
 			}
 		} break;
@@ -611,18 +606,18 @@ bool AnimationTrackKeyEdit::_get(const StringName &p_name, Variant &r_ret) const
 			if (!event.is_valid()) {
 				return false;
 			}
-			if (name == "event_name") {
-				r_ret = event->get_event_name();
+			if (name == "event_type") {
+				if (event->get_script()) {
+					Ref<Script> script = event->get_script();
+					r_ret = script->get_global_name();
+				} else {
+					r_ret = event->get_class_name();
+				}
 				return true;
 			}
-			if (name == "tag_color") {
-				r_ret = event->get_tag_color();
-				return true;
-			}
-			if (name == "event") {
-				r_ret = event;
-				return true;
-			}
+			bool valid;
+			r_ret = event->get(name, &valid);
+			return valid;
 
 		} break;
 	}
@@ -749,12 +744,32 @@ void AnimationTrackKeyEdit::_get_property_list(List<PropertyInfo> *p_list) const
 
 		} break;
 		case Animation::TYPE_EVENT: {
+			List<StringName> subclasses;
+			ScriptServer::get_indirect_inheriters_list(SNAME("AnimationEvent"), &subclasses);
+			String options = "AnimationEvent";
+			for (const StringName &E : subclasses) {
+				if (!ScriptServer::is_global_class_tool(E)) {
+					continue;
+				}
+				if (!options.is_empty()) {
+					options += ",";
+				}
+
+				options += String(E);
+			}
+			p_list->push_back(PropertyInfo(Variant::STRING_NAME, PNAME("event_type"), PROPERTY_HINT_ENUM, options));
+
 			Ref<AnimationEvent> event = animation->event_track_get_key_event(track, key);
 			if (event.is_valid()) {
-				p_list->push_back(PropertyInfo(Variant::STRING_NAME, PNAME("event_name")));
-				p_list->push_back(PropertyInfo(Variant::COLOR, PNAME("tag_color")));
+				List<PropertyInfo> event_props;
+				event->get_property_list(&event_props);
+				for (PropertyInfo prop : event_props) {
+					if (prop.name == "resource_name" || prop.name == "resource_path" || prop.name == "resource_local_to_scene" || prop.name == "script") {
+						continue;
+					}
+					p_list->push_back(prop);
+				}
 			}
-			p_list->push_back(PropertyInfo(Variant::OBJECT, PNAME("event"), PROPERTY_HINT_RESOURCE_TYPE, AnimationEvent::get_class_static()));
 		} break;
 	}
 
@@ -3288,7 +3303,7 @@ void AnimationTrackEdit::gui_input(const Ref<InputEvent> &p_event) {
 				if (!menu) {
 					menu = memnew(PopupMenu);
 					add_child(menu);
-					menu->connect(SceneStringName(id_pressed), callable_mp(this, &AnimationTrackEdit::_menu_selected));
+					menu->connect(SceneStringName(id_pressed), callable_mp(this, &AnimationTrackEdit::_menu_selected).bind(menu));
 				}
 				menu->clear();
 				if (animation->track_get_type(track) == Animation::TYPE_AUDIO) {
@@ -3314,7 +3329,7 @@ void AnimationTrackEdit::gui_input(const Ref<InputEvent> &p_event) {
 				if (!menu) {
 					menu = memnew(PopupMenu);
 					add_child(menu);
-					menu->connect(SceneStringName(id_pressed), callable_mp(this, &AnimationTrackEdit::_menu_selected));
+					menu->connect(SceneStringName(id_pressed), callable_mp(this, &AnimationTrackEdit::_menu_selected).bind(menu));
 				}
 				menu->clear();
 				menu->add_icon_item(get_editor_theme_icon(SNAME("InterpRaw")), TTR("Nearest"), MENU_INTERPOLATION_NEAREST);
@@ -3363,7 +3378,7 @@ void AnimationTrackEdit::gui_input(const Ref<InputEvent> &p_event) {
 				if (!menu) {
 					menu = memnew(PopupMenu);
 					add_child(menu);
-					menu->connect(SceneStringName(id_pressed), callable_mp(this, &AnimationTrackEdit::_menu_selected));
+					menu->connect(SceneStringName(id_pressed), callable_mp(this, &AnimationTrackEdit::_menu_selected).bind(menu));
 				}
 				menu->clear();
 				menu->add_icon_item(get_editor_theme_icon(SNAME("InterpWrapClamp")), TTR("Clamp Loop Interp"), MENU_LOOP_CLAMP);
@@ -3405,7 +3420,7 @@ void AnimationTrackEdit::gui_input(const Ref<InputEvent> &p_event) {
 				if (!menu) {
 					menu = memnew(PopupMenu);
 					add_child(menu);
-					menu->connect(SceneStringName(id_pressed), callable_mp(this, &AnimationTrackEdit::_menu_selected));
+					menu->connect(SceneStringName(id_pressed), callable_mp(this, &AnimationTrackEdit::_menu_selected).bind(menu));
 				}
 
 				bool selected = _try_select_at_ui_pos(pos, mb->is_command_or_control_pressed() || mb->is_shift_pressed(), false);
@@ -3758,11 +3773,11 @@ void AnimationTrackEdit::drop_data(const Point2 &p_point, const Variant &p_data)
 	}
 }
 
-void AnimationTrackEdit::_menu_selected(int p_index) {
-	menu_selected(p_index);
+void AnimationTrackEdit::_menu_selected(int p_index, PopupMenu *p_menu) {
+	menu_selected(p_index, p_menu);
 }
 
-void AnimationTrackEdit::menu_selected(int p_index) {
+void AnimationTrackEdit::menu_selected(int p_index, PopupMenu *p_menu) {
 	switch (p_index) {
 		case MENU_CALL_MODE_CONTINUOUS:
 		case MENU_CALL_MODE_DISCRETE:
@@ -3816,7 +3831,7 @@ void AnimationTrackEdit::menu_selected(int p_index) {
 
 		} break;
 		case MENU_KEY_INSERT: {
-			emit_signal(SNAME("insert_key"), insert_at_pos);
+			emit_signal(SNAME("insert_key"), insert_at_pos, Dictionary());
 		} break;
 		case MENU_KEY_DUPLICATE: {
 			emit_signal(SNAME("duplicate_request"), insert_at_pos, !editor->is_insert_at_current_time_enabled());
@@ -3894,7 +3909,7 @@ void AnimationTrackEdit::_bind_methods() {
 	ADD_SIGNAL(MethodInfo("timeline_changed", PropertyInfo(Variant::FLOAT, "position"), PropertyInfo(Variant::BOOL, "timeline_only")));
 	ADD_SIGNAL(MethodInfo("remove_request", PropertyInfo(Variant::INT, "track")));
 	ADD_SIGNAL(MethodInfo("dropped", PropertyInfo(Variant::INT, "from_track"), PropertyInfo(Variant::INT, "to_track")));
-	ADD_SIGNAL(MethodInfo("insert_key", PropertyInfo(Variant::FLOAT, "offset")));
+	ADD_SIGNAL(MethodInfo("insert_key", PropertyInfo(Variant::FLOAT, "offset"), PropertyInfo(Variant::DICTIONARY, "extra_data")));
 	ADD_SIGNAL(MethodInfo("select_key", PropertyInfo(Variant::INT, "index"), PropertyInfo(Variant::BOOL, "single")));
 	ADD_SIGNAL(MethodInfo("deselect_key", PropertyInfo(Variant::INT, "index")));
 
@@ -6169,7 +6184,7 @@ int AnimationTrackEditor::_get_track_selected() {
 	return -1;
 }
 
-void AnimationTrackEditor::_insert_key_from_track(float p_ofs, int p_track) {
+void AnimationTrackEditor::_insert_key_from_track(float p_ofs, const Dictionary &p_extra_data, int p_track) {
 	if (read_only) {
 		popup_read_only_dialog();
 		return;
@@ -6296,9 +6311,18 @@ void AnimationTrackEditor::_insert_key_from_track(float p_ofs, int p_track) {
 		} break;
 		case Animation::TYPE_EVENT: {
 			Dictionary ev;
-			Ref<AnimationEvent> event = Ref<AnimationEvent>();
-			event.instantiate();
-			ev["event"] = event;
+
+			String event_type = p_extra_data.get("type", "AnimationEvent");
+
+			Variant new_event;
+			if (ScriptServer::is_global_class(event_type)) {
+				new_event = EditorNode::get_editor_data().script_class_instance(event_type);
+			} else {
+				new_event = ClassDB::instantiate(event_type);
+			}
+			EditorNode::get_editor_data().instantiate_object_properties(new_event);
+
+			ev["event"] = new_event;
 			id.value = ev;
 		} break;
 		default: {
@@ -6795,6 +6819,22 @@ void AnimationTrackEditor::_scroll_input(const Ref<InputEvent> &p_event) {
 			}
 			box_selection->show();
 		}
+
+		// TODO Move this to somewhere else (process?)
+		// if (scroll->get_v_scroll_bar()->is_visible_in_tree()) {
+		// 	int v_scroll = scroll->get_v_scroll();
+		// 	int mm_y = mm->get_position().y;
+		// 	int size_y = scroll->get_size().y;
+		// 	int diff = 0;
+		// 	if (mm_y < 0 && v_scroll > 0) {
+		// 		diff = -10;
+		// 	} else if (mm_y > size_y) {
+		// 		diff = 10;
+		// 	}
+		// 	if (diff != 0) {
+		// 		scroll->set_v_scroll(v_scroll + diff);
+		// 	}
+		// }
 
 		Vector2 from = box_selecting_from;
 		Vector2 to = scroll->get_global_transform().xform(mm->get_position());

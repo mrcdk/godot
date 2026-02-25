@@ -46,6 +46,7 @@ protected:
 
 	GDVIRTUAL0R(String, _get_default_event_name)
 	GDVIRTUAL0R(Color, _get_default_tag_color)
+	GDVIRTUAL0R(double, _get_default_duration)
 
 public:
 	void set_event_name(const String &p_event_name);
@@ -53,6 +54,9 @@ public:
 
 	void set_tag_color(const Color &p_color);
 	Color get_tag_color();
+
+	void set_duration(const double p_duration);
+	double get_duration();
 
 	AnimationEvent();
 };

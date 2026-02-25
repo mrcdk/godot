@@ -32,6 +32,7 @@
 #include "animation.compat.inc"
 
 #include "core/io/marshalls.h"
+#include "core/variant/variant_deep_duplicate.h"
 #include "scene/resources/animation_event.h"
 
 bool Animation::_set(const StringName &p_name, const Variant &p_value) {
@@ -1931,7 +1932,7 @@ int Animation::track_insert_key(int p_track, double p_time, const Variant &p_key
 			ERR_FAIL_COND_V(!k.has("event"), -1);
 
 			EventKey ek;
-			ek.event = k["event"];
+			ek.event = k["event"].duplicate_deep(RESOURCE_DEEP_DUPLICATE_INTERNAL);
 
 			TKey<EventKey> ak;
 			ak.time = p_time;
@@ -2489,9 +2490,10 @@ void Animation::track_set_key_value(int p_track, int p_key_idx, const Variant &p
 			EventTrack *at = static_cast<EventTrack *>(t);
 			ERR_FAIL_UNSIGNED_INDEX((uint32_t)p_key_idx, at->values.size());
 
-			// TODO make it a dictionary
+			Dictionary k = p_value;
+			ERR_FAIL_COND(!k.has("event"));
 
-			at->values[p_key_idx].value.event = p_value;
+			at->values[p_key_idx].value.event = k["event"];
 
 		} break;
 	}
@@ -4036,7 +4038,7 @@ int Animation::event_track_insert_key_event(int p_track, double p_time, const Re
 
 	TKey<EventKey> k;
 	k.time = p_time;
-	k.value.event = p_event;
+	k.value.event = p_event->duplicate_deep(RESOURCE_DEEP_DUPLICATE_INTERNAL);
 
 	int key = _insert(p_time, at->values, k);
 
@@ -4054,7 +4056,7 @@ void Animation::event_track_set_key_event(int p_track, int p_key, const Ref<Anim
 
 	ERR_FAIL_UNSIGNED_INDEX((uint32_t)p_key, at->values.size());
 
-	at->values[p_key].value.event = p_event;
+	at->values[p_key].value.event = p_event->duplicate_deep(RESOURCE_DEEP_DUPLICATE_INTERNAL);
 
 	emit_changed();
 }
@@ -4069,6 +4071,22 @@ Ref<AnimationEvent> Animation::event_track_get_key_event(int p_track, int p_key)
 	ERR_FAIL_UNSIGNED_INDEX_V((uint32_t)p_key, at->values.size(), Ref<AnimationEvent>());
 
 	return at->values[p_key].value.event;
+}
+
+bool Animation::event_track_set_key_event_param(int p_track, int p_key, const StringName &p_param_name, const Variant &p_value) {
+	Ref<AnimationEvent> event = event_track_get_key_event(p_track, p_key);
+	ERR_FAIL_COND_V(!event.is_valid(), false);
+	bool ret;
+	event->set(p_param_name, p_value, &ret);
+
+	emit_changed();
+
+	return ret;
+}
+Variant Animation::event_track_get_key_event_param(int p_track, int p_key, const StringName &p_param_name) const {
+	Ref<AnimationEvent> event = event_track_get_key_event(p_track, p_key);
+	ERR_FAIL_COND_V(!event.is_valid(), false);
+	return event->get(p_param_name);
 }
 
 void Animation::set_length(real_t p_length) {
@@ -4275,6 +4293,8 @@ void Animation::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("event_track_insert_key_event", "track_idx", "time", "event"), &Animation::event_track_insert_key_event);
 	ClassDB::bind_method(D_METHOD("event_track_set_key_event", "track_idx", "key_idx", "event"), &Animation::event_track_set_key_event);
 	ClassDB::bind_method(D_METHOD("event_track_get_key_event", "track_idx", "key_idx"), &Animation::event_track_get_key_event);
+	ClassDB::bind_method(D_METHOD("event_track_set_key_event_param", "track_idx", "key_idx", "param_name", "value"), &Animation::event_track_set_key_event_param);
+	ClassDB::bind_method(D_METHOD("event_track_get_key_event_param", "track_idx", "key_idx", "param_name"), &Animation::event_track_get_key_event_param);
 
 	ClassDB::bind_method(D_METHOD("add_marker", "name", "time"), &Animation::add_marker);
 	ClassDB::bind_method(D_METHOD("remove_marker", "name"), &Animation::remove_marker);

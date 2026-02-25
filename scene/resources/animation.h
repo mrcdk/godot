@@ -530,6 +530,8 @@ public:
 	int event_track_insert_key_event(int p_track, double p_time, const Ref<AnimationEvent> &p_event);
 	void event_track_set_key_event(int p_track, int p_key, const Ref<AnimationEvent> &p_event);
 	Ref<AnimationEvent> event_track_get_key_event(int p_track, int p_key_idx) const;
+	bool event_track_set_key_event_param(int p_track, int p_key, const StringName &p_param_name, const Variant &p_value);
+	Variant event_track_get_key_event_param(int p_track, int p_key, const StringName &p_param_name) const;
 
 	void copy_track(int p_track, Ref<Animation> p_to_animation);
 
