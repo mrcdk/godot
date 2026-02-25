@@ -779,7 +779,8 @@ class AnimationTrackEditor : public VBoxContainer {
 	float moving_selection_offset = 0.0f;
 	bool moving_selection_to_different_track = false;
 	int moving_selection_starting_track = -1;
-	int moving_selection_hovered_track = -1;
+	int moving_selection_current_track = -1;
+	Vector<int> moving_selection_compatible_tracks;
 	void _move_selection_begin();
 	void _move_selection(float p_offset);
 	void _move_selection_commit();
@@ -1005,7 +1006,7 @@ public:
 	bool is_bezier_editor_active() const;
 	bool can_add_reset_key() const;
 	void _on_filter_updated(const String &p_filter);
-	int get_moving_selection_hovered_track() const;
+	int get_moving_selection_track() const;
 	float get_moving_selection_offset() const;
 	float snap_time(float p_value, bool p_relative = false);
 	float get_snap_unit();

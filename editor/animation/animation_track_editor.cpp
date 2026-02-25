@@ -34,6 +34,8 @@
 #include "core/config/project_settings.h"
 #include "core/error/error_macros.h"
 #include "core/input/input.h"
+#include "core/math/math_defs.h"
+#include "core/math/math_funcs.h"
 #include "core/object/object.h"
 #include "core/string/node_path.h"
 #include "core/string/print_string.h"
@@ -71,6 +73,7 @@
 #include "scene/resources/animation.h"
 #include "scene/resources/animation_event.h"
 #include "servers/audio/audio_stream.h"
+#include "servers/display/display_server.h"
 
 constexpr double FPS_DECIMAL = 1.0;
 constexpr double SECOND_DECIMAL = 0.0001;
@@ -6365,6 +6368,7 @@ void AnimationTrackEditor::_key_selected(int p_key, bool p_single, int p_track) 
 	}
 
 	KeyInfo ki;
+	ki.track = p_track;
 	ki.pos = animation->track_get_key_time(p_track, p_key);
 	selection[sk] = ki;
 
@@ -6392,7 +6396,7 @@ void AnimationTrackEditor::_move_selection_begin() {
 	moving_selection = true;
 	moving_selection_offset = 0;
 	moving_selection_starting_track = -1;
-	moving_selection_hovered_track = -1;
+	moving_selection_current_track = -1;
 	moving_selection_to_different_track = false;
 
 	int track = -1;
@@ -6408,7 +6412,25 @@ void AnimationTrackEditor::_move_selection_begin() {
 	}
 
 	if (same_track) {
+		// We can move the selection to a different track but check if there are compatible tracks first.
 		moving_selection_starting_track = track;
+
+		const SelectedKey &sk = selection.front()->key();
+		Variant::Type value_type = animation->track_get_key_value(sk.track, sk.key).get_type();
+		Animation::TrackType track_type = animation->track_get_type(sk.track);
+
+		moving_selection_compatible_tracks.clear();
+
+		for (int i = 0; i < track_edits.size(); i++) {
+			int tr = track_edits[i]->get_track();
+			if (_is_track_compatible(tr, value_type, track_type)) {
+				moving_selection_compatible_tracks.append(tr);
+			}
+		}
+
+		if (moving_selection_compatible_tracks.is_empty()) {
+			moving_selection_starting_track = -1;
+		}
 	}
 }
 
@@ -6416,29 +6438,40 @@ void AnimationTrackEditor::_move_selection(float p_offset) {
 	moving_selection_offset = p_offset;
 
 	if (moving_selection_starting_track > -1) {
+		// We could move the selection to a different track. Try choosing which one.
+		double closest = Math::INF;
+		int best_track = -1;
 		for (int i = 0; i < track_edits.size(); i++) {
-			if (track_edits[i]->is_hovered()) {
-				moving_selection_hovered_track = track_edits[i]->get_track();
-				break;
+			int tr = track_edits[i]->get_track();
+			if (!moving_selection_compatible_tracks.has(tr)) {
+				continue;
+			}
+			double y_offset = Math::abs(track_edits[i]->get_local_mouse_position().y - (track_edits[i]->get_size().y / 2));
+			if (y_offset < closest) {
+				closest = y_offset;
+				best_track = tr;
 			}
 		}
-	}
-	moving_selection_to_different_track = moving_selection_starting_track > -1 && moving_selection_hovered_track > -1 && moving_selection_starting_track != moving_selection_hovered_track;
 
-	// Check the first selected key to see if it's compatible with the new track
-	if (moving_selection_to_different_track) {
-		const SelectedKey &sk = selection.front()->key();
-		Variant::Type value_type = animation->track_get_key_value(sk.track, sk.key).get_type();
-		Animation::TrackType track_type = animation->track_get_type(sk.track);
-		moving_selection_to_different_track = _is_track_compatible(moving_selection_hovered_track, value_type, track_type);
-	}
-
-	for (RBMap<SelectedKey, KeyInfo>::Element *E = selection.back(); E; E = E->prev()) {
-		int target_track = E->key().track;
-		if (moving_selection_to_different_track) {
-			target_track = moving_selection_hovered_track;
+		if (best_track > -1) {
+			moving_selection_current_track = best_track;
 		}
-		E->value().track = target_track;
+
+		moving_selection_to_different_track = moving_selection_starting_track > -1 && moving_selection_current_track > -1 && moving_selection_starting_track != moving_selection_current_track;
+
+		// Check the first selected key to see if it's compatible with the new track
+		if (moving_selection_to_different_track) {
+			moving_selection_to_different_track = moving_selection_compatible_tracks.has(moving_selection_current_track);
+		}
+
+		// Update the selection keys track to the current track or reset it to the original one
+		for (RBMap<SelectedKey, KeyInfo>::Element *E = selection.back(); E; E = E->prev()) {
+			int target_track = E->key().track;
+			if (moving_selection_to_different_track) {
+				target_track = moving_selection_current_track;
+			}
+			E->value().track = target_track;
+		}
 	}
 
 	_redraw_tracks();
@@ -6661,8 +6694,9 @@ void AnimationTrackEditor::_move_selection_commit() {
 	moving_selection = false;
 	moving_selection_offset = 0;
 	moving_selection_starting_track = -1;
-	moving_selection_hovered_track = -1;
+	moving_selection_current_track = -1;
 	moving_selection_to_different_track = false;
+	moving_selection_compatible_tracks.clear();
 
 	undo_redo->add_do_method(this, "_redraw_tracks");
 	undo_redo->add_undo_method(this, "_redraw_tracks");
@@ -6681,8 +6715,9 @@ void AnimationTrackEditor::_move_selection_cancel() {
 	moving_selection = false;
 	moving_selection_offset = 0;
 	moving_selection_starting_track = -1;
-	moving_selection_hovered_track = -1;
+	moving_selection_current_track = -1;
 	moving_selection_to_different_track = false;
+	moving_selection_compatible_tracks.clear();
 	_redraw_tracks();
 }
 
@@ -6694,8 +6729,8 @@ float AnimationTrackEditor::get_moving_selection_offset() const {
 	return moving_selection_offset;
 }
 
-int AnimationTrackEditor::get_moving_selection_hovered_track() const {
-	return moving_selection_hovered_track;
+int AnimationTrackEditor::get_moving_selection_track() const {
+	return moving_selection_current_track;
 }
 
 bool AnimationTrackEditor::is_moving_selection_to_different_track() const {
@@ -8385,7 +8420,7 @@ void AnimationTrackEditor::get_keys_to_draw_in_track(int p_track, Vector<KeyDraw
 		float time_offset = animation->track_get_key_time(p_track, i) - timeline->get_value();
 		bool selected = is_key_selected(p_track, i);
 		if (selected && is_moving_selection()) {
-			if (is_moving_selection_to_different_track() && get_moving_selection_hovered_track() != p_track) {
+			if (is_moving_selection_to_different_track() && get_moving_selection_track() != p_track) {
 				// skip keys in a different track
 				continue;
 			}
