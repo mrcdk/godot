@@ -72,6 +72,7 @@
 #include "scene/gui/spin_box.h"
 #include "scene/gui/texture_rect.h"
 #include "scene/gui/view_panner.h"
+#include "scene/main/node.h"
 #include "scene/main/window.h"
 #include "scene/resources/animation.h"
 #include "scene/resources/animation_event.h"
@@ -745,7 +746,7 @@ void AnimationTrackKeyEdit::_get_property_list(List<PropertyInfo> *p_list) const
 		} break;
 		case Animation::TYPE_EVENT: {
 			List<StringName> subclasses;
-			ScriptServer::get_indirect_inheriters_list(SNAME("AnimationEvent"), &subclasses);
+			ScriptServer::get_indirect_inheriters_list(AnimationEvent::get_class_static(), &subclasses);
 			String options = "AnimationEvent";
 			for (const StringName &E : subclasses) {
 				if (!ScriptServer::is_global_class_tool(E)) {
@@ -1633,7 +1634,7 @@ void AnimationTimelineEdit::_notification(int p_what) {
 			add_track->get_popup()->add_icon_item(get_editor_theme_icon(SNAME("KeyBezier")), TTRC("Bezier Curve Track..."));
 			add_track->get_popup()->add_icon_item(get_editor_theme_icon(SNAME("KeyAudio")), TTRC("Audio Playback Track..."));
 			add_track->get_popup()->add_icon_item(get_editor_theme_icon(SNAME("KeyAnimation")), TTRC("Animation Playback Track..."));
-			add_track->get_popup()->add_icon_item(get_editor_theme_icon(SNAME("Signals")), TTRC("Event Track..."));
+			add_track->get_popup()->add_icon_item(get_editor_theme_icon(SNAME("AnimationEvent")), TTRC("Event Track..."));
 
 			timeline_resize_rect.size = get_editor_theme_icon(SNAME("TimelineHandle"))->get_size();
 		} break;
@@ -3035,7 +3036,7 @@ Ref<Texture2D> AnimationTrackEdit::_get_key_type_icon() const {
 		get_editor_theme_icon(SNAME("KeyBezier")),
 		get_editor_theme_icon(SNAME("KeyAudio")),
 		get_editor_theme_icon(SNAME("KeyAnimation")),
-		get_editor_theme_icon(SNAME("AnimationEvent")) // TODO modify
+		get_editor_theme_icon(SNAME("AnimationEvent"))
 	};
 	return type_icons[animation->track_get_type(track)];
 }
@@ -5851,6 +5852,10 @@ void AnimationTrackEditor::_notification(int p_what) {
 
 			_update_nearest_fps_label();
 		} break;
+
+		case NOTIFICATION_PROCESS: {
+			_pan_callback(-auto_scroll_direction, Ref<InputEvent>());
+		} break;
 	}
 }
 
@@ -6436,11 +6441,14 @@ void AnimationTrackEditor::_move_selection_begin() {
 	}
 
 	if (same_track) {
+		const SelectedKey &sk = selection.front()->key();
+		Variant value = animation->track_get_key_value(sk.track, sk.key);
+		ERR_FAIL_COND(!value); // TODO Why is this happening sometimes?
+
 		// We can move the selection to a different track but check if there are compatible tracks first.
 		moving_selection_starting_track = track;
 
-		const SelectedKey &sk = selection.front()->key();
-		Variant::Type value_type = animation->track_get_key_value(sk.track, sk.key).get_type();
+		Variant::Type value_type = value.get_type();
 		Animation::TrackType track_type = animation->track_get_type(sk.track);
 
 		moving_selection_compatible_tracks.clear();
@@ -6780,6 +6788,7 @@ void AnimationTrackEditor::_scroll_input(const Ref<InputEvent> &p_event) {
 	if (mb.is_valid() && mb->get_button_index() == MouseButton::LEFT) {
 		if (mb->is_pressed()) {
 			box_selecting = true;
+			set_process(true);
 			box_selecting_from = scroll->get_global_transform().xform(mb->get_position());
 			box_select_rect = Rect2();
 		} else if (box_selecting) {
@@ -6800,6 +6809,7 @@ void AnimationTrackEditor::_scroll_input(const Ref<InputEvent> &p_event) {
 
 			box_selection->hide();
 			box_selecting = false;
+			set_process(false);
 		}
 	}
 
@@ -6810,6 +6820,7 @@ void AnimationTrackEditor::_scroll_input(const Ref<InputEvent> &p_event) {
 			// No longer.
 			box_selection->hide();
 			box_selecting = false;
+			set_process(false);
 			return;
 		}
 
@@ -6820,21 +6831,26 @@ void AnimationTrackEditor::_scroll_input(const Ref<InputEvent> &p_event) {
 			box_selection->show();
 		}
 
-		// TODO Move this to somewhere else (process?)
-		// if (scroll->get_v_scroll_bar()->is_visible_in_tree()) {
-		// 	int v_scroll = scroll->get_v_scroll();
-		// 	int mm_y = mm->get_position().y;
-		// 	int size_y = scroll->get_size().y;
-		// 	int diff = 0;
-		// 	if (mm_y < 0 && v_scroll > 0) {
-		// 		diff = -10;
-		// 	} else if (mm_y > size_y) {
-		// 		diff = 10;
-		// 	}
-		// 	if (diff != 0) {
-		// 		scroll->set_v_scroll(v_scroll + diff);
-		// 	}
-		// }
+		auto_scroll_direction.x = 0;
+		auto_scroll_direction.y = 0;
+		if (scroll->get_v_scroll_bar()->is_visible_in_tree()) {
+			int mm_y = mm->get_position().y;
+			int size_y = scroll->get_size().y;
+			if (mm_y < 0) {
+				auto_scroll_direction.y = MAX(-15, mm_y);
+			} else if (mm_y > size_y) {
+				auto_scroll_direction.y = MIN(15, mm_y - size_y);
+			}
+		}
+		if (hscroll->is_visible_in_tree()) {
+			int mm_x = mm->get_position().x;
+			int size_x = get_size().width - timeline->get_buttons_width();
+			if (mm_x < timeline->get_name_limit()) {
+				auto_scroll_direction.x = MAX(-15, mm_x - timeline->get_name_limit());
+			} else if (mm_x > size_x) {
+				auto_scroll_direction.x = MIN(15, mm_x - size_x);
+			}
+		}
 
 		Vector2 from = box_selecting_from;
 		Vector2 to = scroll->get_global_transform().xform(mm->get_position());

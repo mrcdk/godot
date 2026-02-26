@@ -1926,19 +1926,10 @@ int Animation::track_insert_key(int p_track, double p_time, const Variant &p_key
 
 		} break;
 		case TYPE_EVENT: {
-			EventTrack *et = static_cast<EventTrack *>(t);
-
 			Dictionary k = p_key;
 			ERR_FAIL_COND_V(!k.has("event"), -1);
 
-			EventKey ek;
-			ek.event = k["event"].duplicate_deep(RESOURCE_DEEP_DUPLICATE_INTERNAL);
-
-			TKey<EventKey> ak;
-			ak.time = p_time;
-			ak.value = ek;
-
-			ret = _insert(p_time, et->values, ak);
+			ret = event_track_insert_key_event(p_track, p_time, k["event"]);
 
 		} break;
 	}
@@ -2493,7 +2484,7 @@ void Animation::track_set_key_value(int p_track, int p_key_idx, const Variant &p
 			Dictionary k = p_value;
 			ERR_FAIL_COND(!k.has("event"));
 
-			at->values[p_key_idx].value.event = k["event"];
+			event_track_set_key_event(p_track, p_key_idx, k["event"]);
 
 		} break;
 	}
@@ -4036,11 +4027,28 @@ int Animation::event_track_insert_key_event(int p_track, double p_time, const Re
 
 	EventTrack *at = static_cast<EventTrack *>(t);
 
+	Ref<AnimationEvent> new_event = p_event->duplicate_deep(RESOURCE_DEEP_DUPLICATE_INTERNAL);
+
 	TKey<EventKey> k;
 	k.time = p_time;
-	k.value.event = p_event->duplicate_deep(RESOURCE_DEEP_DUPLICATE_INTERNAL);
+	k.value.event = new_event;
 
 	int key = _insert(p_time, at->values, k);
+
+	if (key > 0) {
+		double pos = track_get_key_time(p_track, key - 1);
+		Ref<AnimationEvent> prev = event_track_get_key_event(p_track, key - 1);
+		if (pos + prev->get_duration() > p_time) {
+			prev->set_duration(p_time - pos);
+		}
+	}
+
+	if (track_get_key_count(p_track) - 1 > key) {
+		double pos = track_get_key_time(p_track, key + 1);
+		if (p_time + new_event->get_duration() > pos) {
+			new_event->set_duration(pos - p_time);
+		}
+	}
 
 	emit_changed();
 
@@ -4056,7 +4064,25 @@ void Animation::event_track_set_key_event(int p_track, int p_key, const Ref<Anim
 
 	ERR_FAIL_UNSIGNED_INDEX((uint32_t)p_key, at->values.size());
 
-	at->values[p_key].value.event = p_event->duplicate_deep(RESOURCE_DEEP_DUPLICATE_INTERNAL);
+	Ref<AnimationEvent> new_event = p_event->duplicate_deep(RESOURCE_DEEP_DUPLICATE_INTERNAL);
+
+	at->values[p_key].value.event = new_event;
+
+	double time = track_get_key_time(p_track, p_key);
+	if (p_key > 0) {
+		double prev_time = track_get_key_time(p_track, p_key - 1);
+		Ref<AnimationEvent> prev = event_track_get_key_event(p_track, p_key - 1);
+		if (prev_time + prev->get_duration() > time) {
+			prev->set_duration(time - prev_time);
+		}
+	}
+
+	if (track_get_key_count(p_track) - 1 > p_key) {
+		double next_time = track_get_key_time(p_track, p_key + 1);
+		if (time + new_event->get_duration() > next_time) {
+			new_event->set_duration(next_time - time);
+		}
+	}
 
 	emit_changed();
 }
@@ -4077,7 +4103,19 @@ bool Animation::event_track_set_key_event_param(int p_track, int p_key, const St
 	Ref<AnimationEvent> event = event_track_get_key_event(p_track, p_key);
 	ERR_FAIL_COND_V(!event.is_valid(), false);
 	bool ret;
-	event->set(p_param_name, p_value, &ret);
+	if (p_param_name == "duration" && p_value.is_num()) {
+		double duration = p_value;
+		if (track_get_key_count(p_track) - 1 > p_key) {
+			double time = track_get_key_time(p_track, p_key);
+			double next_time = track_get_key_time(p_track, p_key + 1);
+			if (time + duration > next_time) {
+				duration = next_time - time;
+			}
+		}
+		event->set(p_param_name, duration, &ret);
+	} else {
+		event->set(p_param_name, p_value, &ret);
+	}
 
 	emit_changed();
 

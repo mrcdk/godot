@@ -48,7 +48,7 @@ void AnimationEvent::_bind_methods() {
 
 	ADD_PROPERTY(PropertyInfo(Variant::STRING, "event_name", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR), "set_event_name", "get_event_name");
 	ADD_PROPERTY(PropertyInfo(Variant::COLOR, "tag_color", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR), "set_tag_color", "get_tag_color");
-	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "duration", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR), "set_duration", "get_duration");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "duration", PROPERTY_HINT_RANGE, "0,10,0.001,or_greater,suffix:s", PROPERTY_USAGE_EDITOR), "set_duration", "get_duration");
 	ADD_PROPERTY(PropertyInfo(Variant::DICTIONARY, "_data", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NO_EDITOR | PROPERTY_USAGE_INTERNAL), "_set_data", "_get_data");
 
 	GDVIRTUAL_BIND(_get_default_event_name);

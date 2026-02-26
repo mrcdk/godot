@@ -788,6 +788,8 @@ class AnimationTrackEditor : public VBoxContainer {
 	void _move_selection_commit();
 	void _move_selection_cancel();
 
+	Vector2 auto_scroll_direction;
+
 	AnimationTrackKeyEdit *key_edit = nullptr;
 	AnimationMultiTrackKeyEdit *multi_key_edit = nullptr;
 	void _update_key_edit();

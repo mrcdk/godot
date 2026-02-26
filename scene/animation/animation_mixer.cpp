@@ -33,6 +33,7 @@
 
 #include "core/config/engine.h"
 #include "core/config/project_settings.h"
+#include "core/math/math_funcs.h"
 #include "core/object/object.h"
 #include "core/os/memory.h"
 #include "core/string/string_name.h"
@@ -1864,7 +1865,7 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 						}
 						Ref<AnimationEvent> event = a->event_track_get_key_event(i, idx);
 						if (event.is_valid()) {
-							emit_signal(SNAME("animation_event_triggered"), ai.animation_data.name, event, blend);
+							emit_signal(SNAME("animation_event_started"), ai.animation_data.name, event, time, blend);
 						}
 					} else {
 						List<int> indices;
@@ -1872,7 +1873,18 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 						for (int &F : indices) {
 							Ref<AnimationEvent> event = a->event_track_get_key_event(i, F);
 							if (event.is_valid()) {
-								emit_signal(SNAME("animation_event_triggered"), ai.animation_data.name, event, blend);
+								double key_time = a->track_get_key_time(i, F);
+								double duration = event->get_duration();
+								if (duration > 0) {
+									if ((key_time >= time - delta && key_time < time) || Math::is_equal_approx(key_time, time)) {
+										emit_signal(SNAME("animation_event_started"), ai.animation_data.name, event, time, blend);
+									}
+									if ((key_time + duration >= time - delta && key_time + duration <= time) || Math::is_equal_approx(key_time + duration, time)) {
+										emit_signal(SNAME("animation_event_ended"), ai.animation_data.name, event, time, blend);
+									}
+								} else {
+									emit_signal(SNAME("animation_event_started"), ai.animation_data.name, event, time, blend);
+								}
 							}
 						}
 					}
@@ -2516,7 +2528,8 @@ void AnimationMixer::_bind_methods() {
 	ADD_SIGNAL(MethodInfo(SNAME("animation_libraries_updated")));
 	ADD_SIGNAL(MethodInfo(SNAME("animation_finished"), PropertyInfo(Variant::STRING_NAME, "anim_name")));
 	ADD_SIGNAL(MethodInfo(SNAME("animation_started"), PropertyInfo(Variant::STRING_NAME, "anim_name")));
-	ADD_SIGNAL(MethodInfo(SNAME("animation_event_triggered"), PropertyInfo(Variant::STRING_NAME, "anim_name"), PropertyInfo(Variant::STRING_NAME, "event"), PropertyInfo(Variant::FLOAT, "weight")));
+	ADD_SIGNAL(MethodInfo(SNAME("animation_event_started"), PropertyInfo(Variant::STRING_NAME, "anim_name"), PropertyInfo(Variant::STRING_NAME, "event"), PropertyInfo(Variant::FLOAT, "time"), PropertyInfo(Variant::FLOAT, "weight")));
+	ADD_SIGNAL(MethodInfo(SNAME("animation_event_ended"), PropertyInfo(Variant::STRING_NAME, "anim_name"), PropertyInfo(Variant::STRING_NAME, "event"), PropertyInfo(Variant::FLOAT, "time"), PropertyInfo(Variant::FLOAT, "weight")));
 	ADD_SIGNAL(MethodInfo(SNAME("caches_cleared")));
 	ADD_SIGNAL(MethodInfo(SNAME("mixer_applied")));
 	ADD_SIGNAL(MethodInfo(SNAME("mixer_updated"))); // For updating dummy player.
