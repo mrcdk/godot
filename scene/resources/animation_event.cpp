@@ -31,6 +31,7 @@
 #include "animation_event.h"
 #include "core/object/object.h"
 #include "core/string/ustring.h"
+#include "core/typedefs.h"
 #include "core/variant/dictionary.h"
 
 void AnimationEvent::_bind_methods() {
@@ -98,7 +99,7 @@ double AnimationEvent::get_duration() {
 			set_duration(ret);
 		}
 	}
-	return _data.get("duration", 0.0);
+	return MAX(0.0, (double)_data.get("duration", 0.0));
 }
 
 void AnimationEvent::_set_data(const Dictionary &p_data) {
