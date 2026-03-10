@@ -4035,21 +4035,6 @@ int Animation::event_track_insert_key_event(int p_track, double p_time, const Re
 
 	int key = _insert(p_time, at->values, k);
 
-	if (key > 0) {
-		double pos = track_get_key_time(p_track, key - 1);
-		Ref<AnimationEvent> prev = event_track_get_key_event(p_track, key - 1);
-		if (pos + prev->get_duration() > p_time) {
-			prev->set_duration(p_time - pos);
-		}
-	}
-
-	if (track_get_key_count(p_track) - 1 > key) {
-		double pos = track_get_key_time(p_track, key + 1);
-		if (p_time + new_event->get_duration() > pos) {
-			new_event->set_duration(pos - p_time);
-		}
-	}
-
 	emit_changed();
 
 	return key;
@@ -4067,22 +4052,6 @@ void Animation::event_track_set_key_event(int p_track, int p_key, const Ref<Anim
 	Ref<AnimationEvent> new_event = p_event->duplicate_deep(RESOURCE_DEEP_DUPLICATE_INTERNAL);
 
 	at->values[p_key].value.event = new_event;
-
-	double time = track_get_key_time(p_track, p_key);
-	if (p_key > 0) {
-		double prev_time = track_get_key_time(p_track, p_key - 1);
-		Ref<AnimationEvent> prev = event_track_get_key_event(p_track, p_key - 1);
-		if (prev_time + prev->get_duration() > time) {
-			prev->set_duration(time - prev_time);
-		}
-	}
-
-	if (track_get_key_count(p_track) - 1 > p_key) {
-		double next_time = track_get_key_time(p_track, p_key + 1);
-		if (time + new_event->get_duration() > next_time) {
-			new_event->set_duration(next_time - time);
-		}
-	}
 
 	emit_changed();
 }
@@ -4103,19 +4072,7 @@ bool Animation::event_track_set_key_event_param(int p_track, int p_key, const St
 	Ref<AnimationEvent> event = event_track_get_key_event(p_track, p_key);
 	ERR_FAIL_COND_V(!event.is_valid(), false);
 	bool ret;
-	if (p_param_name == "duration" && p_value.is_num()) {
-		double duration = p_value;
-		if (track_get_key_count(p_track) - 1 > p_key) {
-			double time = track_get_key_time(p_track, p_key);
-			double next_time = track_get_key_time(p_track, p_key + 1);
-			if (time + duration > next_time) {
-				duration = next_time - time;
-			}
-		}
-		event->set(p_param_name, duration, &ret);
-	} else {
-		event->set(p_param_name, p_value, &ret);
-	}
+	event->set(p_param_name, p_value, &ret);
 
 	emit_changed();
 

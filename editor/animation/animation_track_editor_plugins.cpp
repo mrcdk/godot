@@ -1367,18 +1367,13 @@ Rect2 AnimationTrackEditTypeEvent::get_key_rect(int p_index, float p_pixels_sec)
 	Dictionary tvalue = get_animation()->track_get_key_value(get_track(), p_index);
 	Ref<AnimationEvent> event = tvalue.get("event", Ref<AnimationEvent>());
 	if (event.is_valid()) {
-		bool uses_duration = event->get_duration() > 0;
-		if (uses_duration) {
-			rect.size.x = event->get_duration() * p_pixels_sec;
-		} else {
-			if (!get_editor()->is_function_name_pressed()) {
-				if (!event->get_event_name().is_empty()) {
-					int text_offset_x = 8;
-					Ref<Font> font = get_theme_font(SceneStringName(font), SNAME("Label"));
-					int font_size = get_theme_font_size(SceneStringName(font_size), SNAME("Label"));
-					Size2 size = font->get_string_size(event->get_event_name(), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size);
-					rect.size.x = MAX(rect.size.x, size.x + text_offset_x);
-				}
+		if (!get_editor()->is_function_name_pressed()) {
+			if (!event->get_event_name().is_empty()) {
+				int text_offset_x = 8;
+				Ref<Font> font = get_theme_font(SceneStringName(font), SNAME("Label"));
+				int font_size = get_theme_font_size(SceneStringName(font_size), SNAME("Label"));
+				Size2 size = font->get_string_size(event->get_event_name(), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size);
+				rect.size.x = MAX(rect.size.x, size.x + text_offset_x);
 			}
 		}
 		rect.size.x += 12;
@@ -1428,32 +1423,20 @@ void AnimationTrackEditTypeEvent::draw_key(int p_track, int p_index, float p_pix
 	} else {
 		font_color = Color(1, 1, 1);
 	}
-	bool uses_duration = event->get_duration() > 0;
+
 	bool show_name = !get_editor()->is_function_name_pressed() && !event_name.is_empty();
 	int rect_height = get_size().y;
 	int rect_width = rect_height;
-	int text_offset_x = uses_duration > 0 ? 0 : 8;
-	int extra_width = uses_duration > 0 ? 0 : 8;
+	int text_offset_x = 8;
+	int extra_width = 8;
 	int max_text_width = 0;
 	int text_x = p_x + text_offset_x;
 	Size2 text_size;
 
-	if (uses_duration) {
-		rect_width = event->get_duration() * p_pixels_sec;
-		rect_width = MIN(rect_width, p_clip_right - p_x);
-		if (show_name) {
-			text_size = font->get_string_size(event_name);
-			max_text_width = rect_width;
-		}
-	} else {
-		if (show_name) {
-			text_size = font->get_string_size(event_name);
-			rect_width = MAX(rect_height, MIN(text_size.x + text_offset_x, p_clip_right - p_x));
-			max_text_width = MAX(0, rect_width - text_offset_x);
-		}
-	}
-
 	if (show_name) {
+		text_size = font->get_string_size(event_name);
+		rect_width = MAX(rect_height, MIN(text_size.x + text_offset_x, p_clip_right - p_x));
+		max_text_width = MAX(0, rect_width - text_offset_x);
 		int diff = p_x + text_offset_x - p_clip_left;
 		if (diff < 0) {
 			text_x = p_clip_left;
@@ -1468,16 +1451,13 @@ void AnimationTrackEditTypeEvent::draw_key(int p_track, int p_index, float p_pix
 
 	Ref<Texture2D> key_texture = get_editor_theme_icon(SNAME("KeyEvent"));
 
-	if (!uses_duration && rect_width < rect_height) {
+	if (rect_width < rect_height) {
 		rect_width = rect_height;
 	}
 
 	if (rect_width >= 1) {
 		Rect2 full_rect(p_x, 2, rect_width, rect_height - 4);
 		draw_texture_region_clipped(key_texture, Rect2(p_x - 8, (rect_height - key_texture->get_height()) / 2, 8, 16), Rect2(0, 0, 8, 16), bg_color);
-		if (uses_duration > 0) {
-			draw_texture_region_clipped(key_texture, Rect2(p_x + rect_width, (rect_height - key_texture->get_height()) / 2, 8, 16), Rect2(8, 0, 8, 16), bg_color);
-		}
 		draw_rect_clipped(full_rect, bg_color);
 	} else {
 		draw_texture_region_clipped(key_texture, Rect2(p_x - 8, (rect_height - key_texture->get_height()) / 2, 16, 16), Rect2(0, 0, 16, 16), bg_color);
@@ -1487,11 +1467,7 @@ void AnimationTrackEditTypeEvent::draw_key(int p_track, int p_index, float p_pix
 		text_buf->set_width(max_text_width);
 		text_buf->clear();
 		text_buf->add_string(event_name, font, font_size);
-		if (uses_duration) {
-			text_buf->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
-		} else {
-			text_buf->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_LEFT);
-		}
+		text_buf->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_LEFT);
 		Vector2 p(text_x, int(get_size().height - text_size.y) / 2);
 		text_buf->draw(get_canvas_item(), p, font_color);
 	}
@@ -1555,150 +1531,6 @@ void AnimationTrackEditTypeEvent::menu_selected(int p_id, PopupMenu *p_menu) {
 		default: {
 			AnimationTrackEdit::menu_selected(p_id, p_menu);
 		} break;
-	}
-}
-
-void AnimationTrackEditTypeEvent::gui_input(const Ref<InputEvent> &p_event) {
-	ERR_FAIL_COND(p_event.is_null());
-
-	Ref<InputEventMouseMotion> mm = p_event;
-	if (!len_resizing && mm.is_valid()) {
-		bool use_hsize_cursor = false;
-		for (int i = 0; i < get_animation()->track_get_key_count(get_track()); i++) {
-			Ref<AnimationEvent> event = get_animation()->event_track_get_key_event(get_track(), i);
-
-			if (!event.is_valid()) {
-				continue;
-			}
-
-			double len = event->get_duration();
-			if (len <= 0) {
-				continue;
-			}
-
-			// float start_ofs = get_animation()->audio_track_get_key_start_offset(get_track(), i);
-			// float end_ofs = get_animation()->audio_track_get_key_end_offset(get_track(), i);
-			// len -= end_ofs;
-			// len -= start_ofs;
-
-			if (get_animation()->track_get_key_count(get_track()) > i + 1) {
-				len = MIN(len, get_animation()->track_get_key_time(get_track(), i + 1) - get_animation()->track_get_key_time(get_track(), i));
-			}
-
-			float ofs = get_animation()->track_get_key_time(get_track(), i);
-
-			ofs -= get_timeline()->get_value();
-			ofs *= get_timeline()->get_zoom_scale();
-			ofs += get_timeline()->get_name_limit();
-
-			int end = ofs + len * get_timeline()->get_zoom_scale();
-
-			if (end >= get_timeline()->get_name_limit() && end <= get_size().width - get_timeline()->get_buttons_width() && Math::abs(mm->get_position().x - end) < 6) {
-				len_resizing_start = false;
-				use_hsize_cursor = true;
-				len_resizing_index = i;
-			}
-
-			if (ofs >= get_timeline()->get_name_limit() && ofs <= get_size().width - get_timeline()->get_buttons_width() && Math::abs(mm->get_position().x - ofs) < 6) {
-				len_resizing_start = true;
-				use_hsize_cursor = true;
-				len_resizing_index = i;
-			}
-		}
-		over_drag_position = use_hsize_cursor;
-	}
-
-	// if (len_resizing && mm.is_valid()) {
-	// 	// Rezising index is some.
-	// 	len_resizing_rel += mm->get_relative().x;
-	// 	float ofs_local = len_resizing_rel / get_timeline()->get_zoom_scale();
-	// 	float prev_ofs_start = get_animation()->audio_track_get_key_start_offset(get_track(), len_resizing_index);
-	// 	float prev_ofs_end = get_animation()->audio_track_get_key_end_offset(get_track(), len_resizing_index);
-	// 	Ref<AudioStream> stream = get_animation()->audio_track_get_key_stream(get_track(), len_resizing_index);
-	// 	float len = stream->get_length();
-	// 	if (len == 0) {
-	// 		Ref<AudioStreamPreview> preview = AudioStreamPreviewGenerator::get_singleton()->generate_preview(stream);
-	// 		float preview_len = preview->get_length();
-	// 		len = preview_len;
-	// 	}
-
-	// 	if (len_resizing_start) {
-	// 		len_resizing_rel = CLAMP(ofs_local, -prev_ofs_start, len - prev_ofs_end - prev_ofs_start) * get_timeline()->get_zoom_scale();
-	// 	} else {
-	// 		len_resizing_rel = CLAMP(ofs_local, -(len - prev_ofs_end - prev_ofs_start), prev_ofs_end) * get_timeline()->get_zoom_scale();
-	// 	}
-
-	// 	queue_redraw();
-	// 	accept_event();
-	// 	return;
-	// }
-
-	// Ref<InputEventMouseButton> mb = p_event;
-	// if (mb.is_valid() && mb->is_pressed() && mb->get_button_index() == MouseButton::LEFT && over_drag_position) {
-	// 	len_resizing = true;
-	// 	// In case if resizing index is not set yet reset the flag.
-	// 	if (len_resizing_index < 0) {
-	// 		len_resizing = false;
-	// 		return;
-	// 	}
-	// 	len_resizing_from_px = mb->get_position().x;
-	// 	len_resizing_rel = 0;
-	// 	queue_redraw();
-	// 	accept_event();
-	// 	return;
-	// }
-
-	// EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
-	// if (len_resizing && mb.is_valid() && !mb->is_pressed() && mb->get_button_index() == MouseButton::LEFT) {
-	// 	if (len_resizing_rel == 0 || len_resizing_index < 0) {
-	// 		len_resizing = false;
-	// 		return;
-	// 	}
-
-	// 	if (len_resizing_start) {
-	// 		float ofs_local = len_resizing_rel / get_timeline()->get_zoom_scale();
-	// 		float prev_ofs = get_animation()->audio_track_get_key_start_offset(get_track(), len_resizing_index);
-	// 		float prev_time = get_animation()->track_get_key_time(get_track(), len_resizing_index);
-	// 		float new_ofs = prev_ofs + ofs_local;
-	// 		float new_time = prev_time + ofs_local;
-	// 		if (prev_time != new_time) {
-	// 			undo_redo->create_action(TTR("Change Audio Track Clip Start Offset"));
-
-	// 			undo_redo->add_do_method(get_animation().ptr(), "track_set_key_time", get_track(), len_resizing_index, new_time);
-	// 			undo_redo->add_undo_method(get_animation().ptr(), "track_set_key_time", get_track(), len_resizing_index, prev_time);
-
-	// 			undo_redo->add_do_method(get_animation().ptr(), "audio_track_set_key_start_offset", get_track(), len_resizing_index, new_ofs);
-	// 			undo_redo->add_undo_method(get_animation().ptr(), "audio_track_set_key_start_offset", get_track(), len_resizing_index, prev_ofs);
-
-	// 			undo_redo->commit_action();
-	// 		}
-	// 	} else {
-	// 		float ofs_local = -len_resizing_rel / get_timeline()->get_zoom_scale();
-	// 		float prev_ofs = get_animation()->audio_track_get_key_end_offset(get_track(), len_resizing_index);
-	// 		float new_ofs = prev_ofs + ofs_local;
-	// 		if (prev_ofs != new_ofs) {
-	// 			undo_redo->create_action(TTR("Change Audio Track Clip End Offset"));
-	// 			undo_redo->add_do_method(get_animation().ptr(), "audio_track_set_key_end_offset", get_track(), len_resizing_index, new_ofs);
-	// 			undo_redo->add_undo_method(get_animation().ptr(), "audio_track_set_key_end_offset", get_track(), len_resizing_index, prev_ofs);
-	// 			undo_redo->commit_action();
-	// 		}
-	// 	}
-
-	// 	len_resizing_index = -1;
-	// 	len_resizing = false;
-	// 	queue_redraw();
-	// 	accept_event();
-	// 	return;
-	// }
-
-	AnimationTrackEdit::gui_input(p_event);
-}
-
-Control::CursorShape AnimationTrackEditTypeEvent::get_cursor_shape(const Point2 &p_pos) const {
-	if (over_drag_position || len_resizing) {
-		return Control::CURSOR_HSIZE;
-	} else {
-		return get_default_cursor_shape();
 	}
 }
 

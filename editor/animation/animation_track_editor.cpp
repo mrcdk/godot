@@ -462,7 +462,6 @@ bool AnimationTrackKeyEdit::_set(const StringName &p_name, const Variant &p_valu
 					Ref<AnimationEvent> r = Object::cast_to<AnimationEvent>(new_event);
 					r->set_event_name(current_event->get_event_name());
 					r->set_tag_color(current_event->get_tag_color());
-					r->set_duration(current_event->get_duration());
 				}
 
 				undo_redo->create_action(TTR("Animation Change Keyframe Value"), UndoRedo::MERGE_ENDS);

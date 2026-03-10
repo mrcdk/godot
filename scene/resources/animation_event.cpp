@@ -41,20 +41,15 @@ void AnimationEvent::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_tag_color", "tag_color"), &AnimationEvent::set_tag_color);
 	ClassDB::bind_method(D_METHOD("get_tag_color"), &AnimationEvent::get_tag_color);
 
-	ClassDB::bind_method(D_METHOD("set_duration", "duration"), &AnimationEvent::set_duration);
-	ClassDB::bind_method(D_METHOD("get_duration"), &AnimationEvent::get_duration);
-
 	ClassDB::bind_method(D_METHOD("_set_data", "data"), &AnimationEvent::_set_data);
 	ClassDB::bind_method(D_METHOD("_get_data"), &AnimationEvent::_get_data);
 
 	ADD_PROPERTY(PropertyInfo(Variant::STRING, "event_name", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR), "set_event_name", "get_event_name");
 	ADD_PROPERTY(PropertyInfo(Variant::COLOR, "tag_color", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR), "set_tag_color", "get_tag_color");
-	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "duration", PROPERTY_HINT_RANGE, "0,10,0.001,or_greater,suffix:s", PROPERTY_USAGE_EDITOR), "set_duration", "get_duration");
 	ADD_PROPERTY(PropertyInfo(Variant::DICTIONARY, "_data", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NO_EDITOR | PROPERTY_USAGE_INTERNAL), "_set_data", "_get_data");
 
 	GDVIRTUAL_BIND(_get_default_event_name);
 	GDVIRTUAL_BIND(_get_default_tag_color);
-	GDVIRTUAL_BIND(_get_default_duration);
 }
 
 void AnimationEvent::set_event_name(const String &p_event_name) {
@@ -85,21 +80,6 @@ Color AnimationEvent::get_tag_color() {
 		}
 	}
 	return _data.get("tag_color", Color(1, 1, 1, 1));
-}
-
-void AnimationEvent::set_duration(const double p_duration) {
-	_data.set("duration", p_duration);
-	emit_changed();
-}
-double AnimationEvent::get_duration() {
-	if (!_data.has("duration")) {
-		if (GDVIRTUAL_IS_OVERRIDDEN(_get_default_duration)) {
-			double ret;
-			GDVIRTUAL_CALL(_get_default_duration, ret);
-			set_duration(ret);
-		}
-	}
-	return MAX(0.0, (double)_data.get("duration", 0.0));
 }
 
 void AnimationEvent::_set_data(const Dictionary &p_data) {
