@@ -37,6 +37,8 @@
 #include "core/object/object.h"
 #include "core/os/memory.h"
 #include "core/string/string_name.h"
+#include "core/templates/local_vector.h"
+#include "core/typedefs.h"
 #include "core/variant/variant.h"
 #include "scene/2d/audio_stream_player_2d.h"
 #include "scene/animation/animation_player.h"
@@ -1855,39 +1857,167 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 					}
 				} break;
 				case Animation::TYPE_EVENT: {
-					if (p_update_only || Math::is_zero_approx(blend)) {
+					TrackCacheEvent *t = static_cast<TrackCacheEvent *>(track);
+					AHashMap<int, ActiveEventInfo> &active_events = t->active_events;
+
+					if (p_update_only) {
 						continue;
 					}
-					if (seeked) {
-						int idx = a->track_find_key(i, time, is_external_seeking ? Animation::FIND_MODE_NEAREST : Animation::FIND_MODE_EXACT, true);
-						if (idx < 0) {
-							continue;
+
+					double from_time = time - delta;
+					double to_time = time;
+					if (from_time > to_time) {
+						SWAP(from_time, to_time);
+					}
+
+					//           |---| |---| |---|
+					//           F       T
+
+					switch (a->get_loop_mode()) {
+						case Animation::LOOP_NONE: {
+							if (from_time < 0) {
+								from_time = 0;
+							}
+							if (from_time > end) {
+								from_time = end;
+							}
+
+							if (to_time < 0) {
+								to_time = 0;
+							}
+							if (to_time > end) {
+								to_time = end;
+							}
+						} break;
+						case Animation::LOOP_LINEAR: {
+							if (from_time > end || from_time < start) {
+								from_time = Math::fposmod(from_time, end);
+							}
+							if (to_time > end || to_time < start) {
+								to_time = Math::fposmod(to_time, end);
+							}
+
+						} break;
+						case Animation::LOOP_PINGPONG: {
+						} break;
+					}
+
+					bool looped = looped_flag != Animation::LOOPED_FLAG_NONE || from_time > to_time;
+
+					if (looped && !active_events.is_empty()) {
+						LocalVector<int> to_delete;
+						for (KeyValue<int, ActiveEventInfo> &E : active_events) {
+							int key_idx = E.key;
+							ActiveEventInfo &ev_info = E.value;
+							Ref<AnimationEvent> event = a->event_track_get_key_event(i, key_idx);
+							if (!event.is_valid()) {
+								to_delete.push_back(key_idx);
+								continue;
+							}
+							if (ev_info.one_shot()) {
+								emit_signal(SNAME("animation_event_started"), ai.animation_data.name, event, blend);
+								to_delete.push_back(key_idx);
+								continue;
+							}
+							if (!ev_info.start_fired) {
+								emit_signal(SNAME("animation_event_started"), ai.animation_data.name, event, blend);
+								ev_info.start_fired = true;
+							}
+							if (!ev_info.end_fired) {
+								emit_signal(SNAME("animation_event_ended"), ai.animation_data.name, event, blend);
+								ev_info.end_fired = true;
+							}
+							to_delete.push_back(key_idx);
 						}
-						Ref<AnimationEvent> event = a->event_track_get_key_event(i, idx);
-						if (event.is_valid()) {
-							emit_signal(SNAME("animation_event_started"), ai.animation_data.name, event, time, blend);
+
+						for (int k : to_delete) {
+							active_events.erase(k);
+						}
+					}
+
+					List<int> indices;
+					if (seeked) {
+						int idx = a->track_find_key(i, time, Animation::FIND_MODE_APPROX, true);
+						if (idx > -1) {
+							indices.push_back(idx);
 						}
 					} else {
-						List<int> indices;
 						a->track_get_key_indices_in_range(i, time, delta, start, end, &indices, looped_flag);
-						for (int &F : indices) {
-							Ref<AnimationEvent> event = a->event_track_get_key_event(i, F);
+					}
+
+					if (!looped && (indices.is_empty() || indices.get(0) > 0)) {
+						int idx = -1;
+						if (indices.is_empty()) {
+							idx = a->track_find_key(i, time, Animation::FIND_MODE_NEAREST, true);
+						} else {
+							idx = indices.get(0) - 1;
+						}
+						if (idx > -1 && !active_events.has(idx)) {
+							Ref<AnimationEvent> event = a->event_track_get_key_event(i, idx);
 							if (event.is_valid()) {
-								double key_time = a->track_get_key_time(i, F);
-								double duration = event->get_duration();
-								if (duration > 0) {
-									if ((key_time >= time - delta && key_time < time) || Math::is_equal_approx(key_time, time)) {
-										emit_signal(SNAME("animation_event_started"), ai.animation_data.name, event, time, blend);
+								double k_start = a->track_get_key_time(i, idx);
+								double k_end = k_start + event->get_duration();
+								if (Animation::is_greater_or_equal_approx(k_end, time)) {
+									ActiveEventInfo ev_info;
+									ev_info.start = k_start;
+									ev_info.end = k_end;
+									if (backward) {
+										SWAP(ev_info.start, ev_info.end);
 									}
-									if ((key_time + duration >= time - delta && key_time + duration <= time) || Math::is_equal_approx(key_time + duration, time)) {
-										emit_signal(SNAME("animation_event_ended"), ai.animation_data.name, event, time, blend);
-									}
-								} else {
-									emit_signal(SNAME("animation_event_started"), ai.animation_data.name, event, time, blend);
+									ev_info.start_fired = false;
+									ev_info.end_fired = false;
+									active_events[idx] = ev_info;
 								}
 							}
 						}
 					}
+
+					for (int &idx : indices) {
+						Ref<AnimationEvent> event = a->event_track_get_key_event(i, idx);
+						if (event.is_valid() && !active_events.has(idx)) {
+							ActiveEventInfo ev_info;
+							ev_info.start = a->track_get_key_time(i, idx);
+							ev_info.end = CLAMP(ev_info.start + event->get_duration(), 0.0, a_length);
+							if (backward) {
+								SWAP(ev_info.start, ev_info.end);
+							}
+							ev_info.start_fired = false;
+							ev_info.end_fired = false;
+							active_events[idx] = ev_info;
+						}
+					}
+
+					LocalVector<int> to_delete;
+					for (KeyValue<int, ActiveEventInfo> &E : active_events) {
+						int key_idx = E.key;
+						ActiveEventInfo &ev_info = E.value;
+						Ref<AnimationEvent> event = a->event_track_get_key_event(i, key_idx);
+						if (!event.is_valid()) {
+							to_delete.push_back(key_idx);
+							continue;
+						}
+						if (ev_info.one_shot()) {
+							emit_signal(SNAME("animation_event_started"), ai.animation_data.name, event, blend);
+							to_delete.push_back(key_idx);
+							continue;
+						}
+						bool emit_start = !ev_info.start_fired && ((backward ? time < ev_info.start : time > ev_info.start) || Math::is_equal_approx(time, ev_info.start));
+						if (emit_start) {
+							emit_signal(SNAME("animation_event_started"), ai.animation_data.name, event, blend);
+							ev_info.start_fired = true;
+						}
+						bool emit_end = !ev_info.end_fired && ((backward ? time < ev_info.end : time > ev_info.end) || Math::is_equal_approx(time, ev_info.end));
+						if (emit_end) {
+							emit_signal(SNAME("animation_event_ended"), ai.animation_data.name, event, blend);
+							ev_info.end_fired = true;
+							to_delete.push_back(key_idx);
+						}
+					}
+
+					for (int k : to_delete) {
+						active_events.erase(k);
+					}
+
 				} break;
 			}
 		}
@@ -2528,8 +2658,8 @@ void AnimationMixer::_bind_methods() {
 	ADD_SIGNAL(MethodInfo(SNAME("animation_libraries_updated")));
 	ADD_SIGNAL(MethodInfo(SNAME("animation_finished"), PropertyInfo(Variant::STRING_NAME, "anim_name")));
 	ADD_SIGNAL(MethodInfo(SNAME("animation_started"), PropertyInfo(Variant::STRING_NAME, "anim_name")));
-	ADD_SIGNAL(MethodInfo(SNAME("animation_event_started"), PropertyInfo(Variant::STRING_NAME, "anim_name"), PropertyInfo(Variant::STRING_NAME, "event"), PropertyInfo(Variant::FLOAT, "time"), PropertyInfo(Variant::FLOAT, "weight")));
-	ADD_SIGNAL(MethodInfo(SNAME("animation_event_ended"), PropertyInfo(Variant::STRING_NAME, "anim_name"), PropertyInfo(Variant::STRING_NAME, "event"), PropertyInfo(Variant::FLOAT, "time"), PropertyInfo(Variant::FLOAT, "weight")));
+	ADD_SIGNAL(MethodInfo(SNAME("animation_event_started"), PropertyInfo(Variant::STRING_NAME, "anim_name"), PropertyInfo(Variant::STRING_NAME, "event"), PropertyInfo(Variant::FLOAT, "weight")));
+	ADD_SIGNAL(MethodInfo(SNAME("animation_event_ended"), PropertyInfo(Variant::STRING_NAME, "anim_name"), PropertyInfo(Variant::STRING_NAME, "event"), PropertyInfo(Variant::FLOAT, "weight")));
 	ADD_SIGNAL(MethodInfo(SNAME("caches_cleared")));
 	ADD_SIGNAL(MethodInfo(SNAME("mixer_applied")));
 	ADD_SIGNAL(MethodInfo(SNAME("mixer_updated"))); // For updating dummy player.

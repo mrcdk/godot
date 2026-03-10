@@ -30,6 +30,7 @@
 
 #pragma once
 
+#include "core/math/math_funcs.h"
 #include "core/templates/a_hash_map.h"
 #include "scene/animation/tween.h"
 #include "scene/main/node.h"
@@ -303,7 +304,17 @@ protected:
 		}
 	};
 
+	struct ActiveEventInfo {
+		double start;
+		double end;
+		bool start_fired = false;
+		bool end_fired = false;
+
+		inline bool one_shot() { return Math::is_equal_approx(start, end); }
+	};
+
 	struct TrackCacheEvent : public TrackCache {
+		AHashMap<int, ActiveEventInfo> active_events;
 		TrackCacheEvent() {
 			type = Animation::TYPE_EVENT;
 		}
