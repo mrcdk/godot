@@ -78,7 +78,6 @@
 #include "scene/resources/animation_event.h"
 #include "servers/audio/audio_stream.h"
 #include "servers/display/display_server.h"
-#include <cstddef>
 
 constexpr double FPS_DECIMAL = 1.0;
 constexpr double SECOND_DECIMAL = 0.0001;
@@ -6426,6 +6425,10 @@ void AnimationTrackEditor::_move_selection_begin() {
 	moving_selection_starting_track = -1;
 	moving_selection_current_track = -1;
 	moving_selection_to_different_track = false;
+
+	if (selection.is_empty()) {
+		return;
+	}
 
 	int track = -1;
 	bool same_track = true;
