@@ -1878,19 +1878,6 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 					}
 					switch (a->get_loop_mode()) {
 						case Animation::LOOP_NONE: {
-							if (from_time < 0) {
-								from_time = 0;
-							}
-							if (from_time > end) {
-								from_time = end;
-							}
-
-							if (to_time < 0) {
-								to_time = 0;
-							}
-							if (to_time > end) {
-								to_time = end;
-							}
 						} break;
 						case Animation::LOOP_LINEAR: {
 							if (from_time > end || from_time < start) {
@@ -1919,38 +1906,6 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 								looped = false;
 							}
 						} break;
-					}
-
-					if (looped) {
-						// if we looped then fire all the events from last time + last delta
-						LocalVector<int> to_delete;
-						for (KeyValue<int, ActiveEventInfo> &E : active_events) {
-							int key_idx = E.key;
-							ActiveEventInfo &ev_info = E.value;
-							Ref<AnimationEvent> event = a->event_track_get_key_event(i, key_idx);
-							if (!event.is_valid()) {
-								to_delete.push_back(key_idx);
-								continue;
-							}
-							if (ev_info.one_shot()) {
-								emit_signal(SNAME("animation_event_started"), ai.animation_data.name, event, blend);
-								to_delete.push_back(key_idx);
-								continue;
-							}
-							if (ev_info.can_emit_start(t->last_time + t->last_delta, backward)) {
-								emit_signal(SNAME("animation_event_started"), ai.animation_data.name, event, blend);
-								ev_info.start_fired = true;
-							}
-							if (ev_info.can_emit_end(t->last_time + t->last_delta, backward)) {
-								emit_signal(SNAME("animation_event_ended"), ai.animation_data.name, event, blend);
-								ev_info.end_fired = true;
-								to_delete.push_back(key_idx);
-							}
-						}
-
-						for (int k : to_delete) {
-							active_events.erase(k);
-						}
 					}
 
 					List<int> indices;
@@ -1988,16 +1943,32 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 							continue;
 						}
 						if (ev_info.one_shot()) {
-							emit_signal(SNAME("animation_event_started"), ai.animation_data.name, event, blend);
+							if (!Math::is_zero_approx(blend)) {
+								emit_signal(SNAME("animation_event_started"), ai.animation_data.name, event, blend);
+							}
 							to_delete.push_back(key_idx);
 							continue;
 						}
-						if (ev_info.can_emit_start(time, backward)) {
-							emit_signal(SNAME("animation_event_started"), ai.animation_data.name, event, blend);
+						bool emit_start = ev_info.can_emit_start(time, backward);
+						if (looped && !emit_start) {
+							// if we looped and the start wasn't fired then check as if the animation continued from last frame
+							emit_start = ev_info.can_emit_start(t->last_time + t->last_delta, backward);
+							ev_info.looped_start = emit_start || ev_info.start_fired; // if we need to emit the start or we already emitted it then we may need to emit the end too
+						}
+						if (emit_start) {
+							if (!Math::is_zero_approx(blend)) {
+								emit_signal(SNAME("animation_event_started"), ai.animation_data.name, event, blend);
+							}
 							ev_info.start_fired = true;
 						}
-						if (ev_info.can_emit_end(time, backward)) {
-							emit_signal(SNAME("animation_event_ended"), ai.animation_data.name, event, blend);
+						bool emit_end = ev_info.can_emit_end(time, backward);
+						if (looped && ev_info.looped_start && !emit_end) {
+							emit_end = ev_info.can_emit_end(t->last_time + t->last_delta, backward);
+						}
+						if (emit_end) {
+							if (!Math::is_zero_approx(blend)) {
+								emit_signal(SNAME("animation_event_ended"), ai.animation_data.name, event, blend);
+							}
 							ev_info.end_fired = true;
 							to_delete.push_back(key_idx);
 						}
