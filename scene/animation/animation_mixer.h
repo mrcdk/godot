@@ -309,12 +309,30 @@ protected:
 		double end;
 		bool start_fired = false;
 		bool end_fired = false;
+		bool force_start = false;
+		bool force_end = false;
 
-		inline bool one_shot() { return Math::is_equal_approx(start, end); }
+		inline bool one_shot() const { return Math::is_equal_approx(start, end); }
+		inline bool can_emit_start(const double p_time, const bool p_backward) const {
+			if (!p_backward) {
+				return !start_fired && (force_start || p_time > start || Math::is_equal_approx(p_time, start));
+			} else {
+				return !start_fired && (force_start || p_time < end || Math::is_equal_approx(p_time, end));
+			}
+		}
+		inline bool can_emit_end(const double p_time, const bool p_backward) const {
+			if (!p_backward) {
+				return !end_fired && (force_end || p_time > end || Math::is_equal_approx(p_time, end));
+			} else {
+				return !end_fired && (force_end || p_time < start || Math::is_equal_approx(p_time, start));
+			}
+		}
 	};
 
 	struct TrackCacheEvent : public TrackCache {
 		AHashMap<int, ActiveEventInfo> active_events;
+		double last_time = -1;
+		double last_delta = -1;
 		TrackCacheEvent() {
 			type = Animation::TYPE_EVENT;
 		}

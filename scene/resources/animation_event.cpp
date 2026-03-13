@@ -88,7 +88,7 @@ Color AnimationEvent::get_tag_color() {
 }
 
 void AnimationEvent::set_duration(const double p_duration) {
-	_data.set("duration", p_duration);
+	_data.set("duration", MAX(0.0, p_duration));
 	emit_changed();
 }
 double AnimationEvent::get_duration() {

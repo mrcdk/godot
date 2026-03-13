@@ -242,6 +242,10 @@ private:
 
 	struct EventKey {
 		Ref<AnimationEvent> event;
+
+		inline double get_duration() const {
+			return event.is_valid() ? event->get_duration() : 0.0;
+		}
 	};
 
 	struct EventTrack : public Track {
@@ -273,8 +277,8 @@ private:
 
 	int _marker_insert(double p_time, LocalVector<MarkerKey> &p_keys, const MarkerKey &p_value);
 
+	inline int _find(const LocalVector<TKey<EventKey>> &p_keys, double p_time, bool p_backward = false, bool p_limit = false) const;
 	template <typename K>
-
 	inline int _find(const LocalVector<K> &p_keys, double p_time, bool p_backward = false, bool p_limit = false) const;
 
 	_FORCE_INLINE_ Vector3 _interpolate(const Vector3 &p_a, const Vector3 &p_b, real_t p_c) const;
@@ -292,6 +296,7 @@ private:
 	template <typename T>
 	_FORCE_INLINE_ T _interpolate(const LocalVector<TKey<T>> &p_keys, double p_time, InterpolationType p_interp, bool p_loop_wrap, bool *p_ok, bool p_backward = false) const;
 
+	_FORCE_INLINE_ void _track_get_key_indices_in_range(const LocalVector<TKey<EventKey>> &p_array, double from_time, double to_time, List<int> *p_indices, bool p_is_backward) const;
 	template <typename T>
 	_FORCE_INLINE_ void _track_get_key_indices_in_range(const LocalVector<T> &p_array, double from_time, double to_time, List<int> *p_indices, bool p_is_backward) const;
 
@@ -536,6 +541,7 @@ public:
 	void copy_track(int p_track, Ref<Animation> p_to_animation);
 
 	void track_get_key_indices_in_range(int p_track, double p_time, double p_delta, double p_start, double p_end, List<int> *p_indices, Animation::LoopedFlag p_looped_flag = Animation::LOOPED_FLAG_NONE) const;
+	PackedInt32Array track_get_key_indices_in_range_ex(int p_track, double p_time, double p_delta, double p_start, double p_end, Animation::LoopedFlag p_looped_flag = Animation::LOOPED_FLAG_NONE) const;
 
 	void add_marker(const StringName &p_name, double p_time);
 	void remove_marker(const StringName &p_name);

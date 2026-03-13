@@ -46,6 +46,7 @@
 #include "scene/resources/animation.h"
 #include "servers/audio/audio_server.h"
 #include "servers/audio/audio_stream.h"
+#include <cmath>
 
 #ifndef _3D_DISABLED
 #include "scene/3d/audio_stream_player_3d.h"
@@ -1864,15 +1865,17 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 						continue;
 					}
 
+					bool looped = looped_flag != Animation::LOOPED_FLAG_NONE;
+
 					double from_time = time - delta;
 					double to_time = time;
+
+					start = CLAMP(start, 0.0, a->get_length());
+					end = CLAMP(end, 0.0, a->get_length());
+
 					if (from_time > to_time) {
 						SWAP(from_time, to_time);
 					}
-
-					//           |---| |---| |---|
-					//           F       T
-
 					switch (a->get_loop_mode()) {
 						case Animation::LOOP_NONE: {
 							if (from_time < 0) {
@@ -1897,14 +1900,29 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 								to_time = Math::fposmod(to_time, end);
 							}
 
+							if (from_time > to_time) {
+								looped = true;
+							}
+
 						} break;
 						case Animation::LOOP_PINGPONG: {
+							if (from_time > end || from_time < start) {
+								from_time = Math::pingpong(from_time, (double)a->get_length());
+							}
+							if (to_time > end || to_time < start) {
+								to_time = Math::pingpong(to_time, (double)a->get_length());
+							}
+
+							if (!backward && Math::is_equal_approx(to_time, end)) {
+								looped = false;
+							} else if (backward && Math::is_equal_approx(from_time, start)) {
+								looped = false;
+							}
 						} break;
 					}
 
-					bool looped = looped_flag != Animation::LOOPED_FLAG_NONE || from_time > to_time;
-
-					if (looped && !active_events.is_empty()) {
+					if (looped) {
+						// if we looped then fire all the events from last time + last delta
 						LocalVector<int> to_delete;
 						for (KeyValue<int, ActiveEventInfo> &E : active_events) {
 							int key_idx = E.key;
@@ -1919,15 +1937,15 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 								to_delete.push_back(key_idx);
 								continue;
 							}
-							if (!ev_info.start_fired) {
+							if (ev_info.can_emit_start(t->last_time + t->last_delta, backward)) {
 								emit_signal(SNAME("animation_event_started"), ai.animation_data.name, event, blend);
 								ev_info.start_fired = true;
 							}
-							if (!ev_info.end_fired) {
+							if (ev_info.can_emit_end(t->last_time + t->last_delta, backward)) {
 								emit_signal(SNAME("animation_event_ended"), ai.animation_data.name, event, blend);
 								ev_info.end_fired = true;
+								to_delete.push_back(key_idx);
 							}
-							to_delete.push_back(key_idx);
 						}
 
 						for (int k : to_delete) {
@@ -1937,7 +1955,7 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 
 					List<int> indices;
 					if (seeked) {
-						int idx = a->track_find_key(i, time, Animation::FIND_MODE_APPROX, true);
+						int idx = a->track_find_key(i, time, is_external_seeking ? Animation::FIND_MODE_NEAREST : Animation::FIND_MODE_EXACT, true);
 						if (idx > -1) {
 							indices.push_back(idx);
 						}
@@ -1945,42 +1963,15 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 						a->track_get_key_indices_in_range(i, time, delta, start, end, &indices, looped_flag);
 					}
 
-					if (!looped && (indices.is_empty() || indices.get(0) > 0)) {
-						int idx = -1;
-						if (indices.is_empty()) {
-							idx = a->track_find_key(i, time, Animation::FIND_MODE_NEAREST, true);
-						} else {
-							idx = indices.get(0) - 1;
-						}
-						if (idx > -1 && !active_events.has(idx)) {
-							Ref<AnimationEvent> event = a->event_track_get_key_event(i, idx);
-							if (event.is_valid()) {
-								double k_start = a->track_get_key_time(i, idx);
-								double k_end = k_start + event->get_duration();
-								if (Animation::is_greater_or_equal_approx(k_end, time)) {
-									ActiveEventInfo ev_info;
-									ev_info.start = k_start;
-									ev_info.end = k_end;
-									if (backward) {
-										SWAP(ev_info.start, ev_info.end);
-									}
-									ev_info.start_fired = false;
-									ev_info.end_fired = false;
-									active_events[idx] = ev_info;
-								}
-							}
-						}
-					}
-
 					for (int &idx : indices) {
+						if (active_events.has(idx)) {
+							continue;
+						}
 						Ref<AnimationEvent> event = a->event_track_get_key_event(i, idx);
-						if (event.is_valid() && !active_events.has(idx)) {
+						if (event.is_valid()) {
 							ActiveEventInfo ev_info;
-							ev_info.start = a->track_get_key_time(i, idx);
-							ev_info.end = CLAMP(ev_info.start + event->get_duration(), 0.0, a_length);
-							if (backward) {
-								SWAP(ev_info.start, ev_info.end);
-							}
+							ev_info.start = CLAMP(a->track_get_key_time(i, idx), start, end);
+							ev_info.end = CLAMP(ev_info.start + event->get_duration(), start, end);
 							ev_info.start_fired = false;
 							ev_info.end_fired = false;
 							active_events[idx] = ev_info;
@@ -2001,13 +1992,11 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 							to_delete.push_back(key_idx);
 							continue;
 						}
-						bool emit_start = !ev_info.start_fired && ((backward ? time < ev_info.start : time > ev_info.start) || Math::is_equal_approx(time, ev_info.start));
-						if (emit_start) {
+						if (ev_info.can_emit_start(time, backward)) {
 							emit_signal(SNAME("animation_event_started"), ai.animation_data.name, event, blend);
 							ev_info.start_fired = true;
 						}
-						bool emit_end = !ev_info.end_fired && ((backward ? time < ev_info.end : time > ev_info.end) || Math::is_equal_approx(time, ev_info.end));
-						if (emit_end) {
+						if (ev_info.can_emit_end(time, backward)) {
 							emit_signal(SNAME("animation_event_ended"), ai.animation_data.name, event, blend);
 							ev_info.end_fired = true;
 							to_delete.push_back(key_idx);
@@ -2018,6 +2007,8 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 						active_events.erase(k);
 					}
 
+					t->last_time = time;
+					t->last_delta = delta;
 				} break;
 			}
 		}

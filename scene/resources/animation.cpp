@@ -32,6 +32,11 @@
 #include "animation.compat.inc"
 
 #include "core/io/marshalls.h"
+#include "core/object/class_db.h"
+#include "core/templates/vector.h"
+#include "core/typedefs.h"
+#include "core/variant/array.h"
+#include "core/variant/variant.h"
 #include "core/variant/variant_deep_duplicate.h"
 #include "scene/resources/animation_event.h"
 
@@ -1804,9 +1809,19 @@ int Animation::track_find_key(int p_track, double p_time, FindMode p_find_mode, 
 			if ((uint32_t)k >= at->values.size()) {
 				return -1;
 			}
-			if ((p_find_mode == FIND_MODE_APPROX && !Math::is_equal_approx(at->values[k].time, p_time)) || (p_find_mode == FIND_MODE_EXACT && at->values[k].time != p_time)) {
-				return -1;
+
+			double key_start = at->values[k].time;
+			double key_end = key_start + at->values[k].value.get_duration();
+			if (p_find_mode == FIND_MODE_APPROX) {
+				if (!(Animation::is_greater_or_equal_approx(p_time, key_start) && Animation::is_less_or_equal_approx(p_time, key_end))) {
+					return -1;
+				}
+			} else if (p_find_mode == FIND_MODE_EXACT) {
+				if (!(p_time >= key_start && p_time <= key_end)) {
+					return -1;
+				}
 			}
+
 			return k;
 
 		} break;
@@ -2544,6 +2559,64 @@ void Animation::track_set_key_transition(int p_track, int p_key_idx, real_t p_tr
 	emit_changed();
 }
 
+int Animation::_find(const LocalVector<TKey<EventKey>> &p_keys, double p_time, bool p_backward, bool p_limit) const {
+	int len = p_keys.size();
+	if (len == 0) {
+		return -2;
+	}
+
+	int low = 0;
+	int high = len - 1;
+	int middle = 0;
+
+#ifdef DEBUG_ENABLED
+	if (low > high) {
+		ERR_PRINT("low > high, this may be a bug.");
+	}
+#endif
+
+	const TKey<EventKey> *keys = &p_keys[0];
+
+	while (low <= high) {
+		middle = (low + high) / 2;
+
+		double key_start = keys[middle].time;
+		double key_end = key_start + keys[middle].value.get_duration();
+
+		if (Animation::is_greater_or_equal_approx(p_time, key_start) && Animation::is_less_or_equal_approx(p_time, key_end)) { //match
+			return middle;
+		} else if (p_time < key_start) {
+			high = middle - 1; //search low end of array
+		} else {
+			low = middle + 1; //search high end of array
+		}
+	}
+
+	double key_start = keys[middle].time;
+	double key_end = key_start + keys[middle].value.get_duration();
+
+	if (!p_backward) {
+		if (key_start > p_time) {
+			middle--;
+		}
+	} else {
+		if (key_end < p_time) {
+			middle++;
+		}
+	}
+
+	if (p_limit && middle > -1 && middle < len) {
+		// TODO What to do about this?
+		double diff = length - keys[middle].time;
+		if ((std::signbit(keys[middle].time) && !Math::is_zero_approx(keys[middle].time)) || (std::signbit(diff) && !Math::is_zero_approx(diff))) {
+			ERR_PRINT_ONCE_ED("Found the key outside the animation range. Consider using the clean-up option in AnimationTrackEditor to fix it.");
+			return -1;
+		}
+	}
+
+	return middle;
+}
+
 template <typename K>
 int Animation::_find(const LocalVector<K> &p_keys, double p_time, bool p_backward, bool p_limit) const {
 	int len = p_keys.size();
@@ -2906,6 +2979,81 @@ Animation::UpdateMode Animation::value_track_get_update_mode(int p_track) const 
 
 	ValueTrack *vt = static_cast<ValueTrack *>(t);
 	return vt->update_mode;
+}
+
+void Animation::_track_get_key_indices_in_range(const LocalVector<TKey<EventKey>> &p_array, double from_time, double to_time, List<int> *p_indices, bool p_is_backward) const {
+	int len = p_array.size();
+	if (len == 0) {
+		return;
+	}
+
+	int from = 0;
+	int to = len - 1;
+
+	if (!p_is_backward) {
+		while (true) {
+			double key_start = p_array[from].time;
+			double key_end = key_start + p_array[from].value.get_duration();
+			if (Animation::is_less_or_equal_approx(key_end, from_time)) {
+				from++;
+			} else {
+				break;
+			}
+			if (to < from) {
+				return;
+			}
+		}
+		while (true) {
+			double key_start = p_array[to].time;
+			if (Animation::is_greater_approx(key_start, to_time)) {
+				to--;
+			} else {
+				break;
+			}
+			if (to < from) {
+				return;
+			}
+		}
+	} else {
+		while (true) {
+			double key_start = p_array[from].time;
+			double key_end = key_start + p_array[from].value.get_duration();
+			if (Animation::is_less_approx(key_end, from_time)) {
+				from++;
+			} else {
+				break;
+			}
+			if (to < from) {
+				return;
+			}
+		}
+		while (true) {
+			double key_start = p_array[to].time;
+			if (Animation::is_greater_or_equal_approx(key_start, to_time)) {
+				to--;
+			} else {
+				break;
+			}
+			if (to < from) {
+				return;
+			}
+		}
+	}
+
+	if (from == to) {
+		p_indices->push_back(from);
+		return;
+	}
+
+	if (!p_is_backward) {
+		for (int i = from; i <= to; i++) {
+			p_indices->push_back(i);
+		}
+	} else {
+		for (int i = to; i >= from; i--) {
+			p_indices->push_back(i);
+		}
+	}
 }
 
 template <typename T>
@@ -3384,6 +3532,29 @@ void Animation::track_get_key_indices_in_range(int p_track, double p_time, doubl
 			_track_get_key_indices_in_range(ev->values, from_time, to_time, p_indices, is_backward);
 		} break;
 	}
+}
+
+PackedInt32Array Animation::track_get_key_indices_in_range_ex(int p_track, double p_time, double p_delta, double p_start, double p_end, Animation::LoopedFlag p_looped_flag) const {
+	if (p_start < 0) {
+		p_start = 0;
+	}
+	if (p_end < 0) {
+		p_end = length;
+	}
+
+	p_start = CLAMP(p_start, 0, length);
+	p_end = CLAMP(p_end, 0, length);
+	if (p_start > p_end) {
+		SWAP(p_start, p_end);
+	}
+
+	List<int> indices;
+	track_get_key_indices_in_range(p_track, p_time, p_delta, p_start, p_end, &indices, p_looped_flag);
+	PackedInt32Array res;
+	for (int k : indices) {
+		res.append(k);
+	}
+	return res;
 }
 
 void Animation::add_marker(const StringName &p_name, double p_time) {
@@ -4285,6 +4456,7 @@ void Animation::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("track_get_key_value", "track_idx", "key_idx"), &Animation::track_get_key_value);
 	ClassDB::bind_method(D_METHOD("track_get_key_time", "track_idx", "key_idx"), &Animation::track_get_key_time);
 	ClassDB::bind_method(D_METHOD("track_find_key", "track_idx", "time", "find_mode", "limit", "backward"), &Animation::track_find_key, DEFVAL(FIND_MODE_NEAREST), DEFVAL(false), DEFVAL(false));
+	ClassDB::bind_method(D_METHOD("track_get_key_indices_in_range", "track_idx", "time", "delta", "start", "end", "looped_flag"), &Animation::track_get_key_indices_in_range_ex, DEFVAL(-1), DEFVAL(-1), DEFVAL(LOOPED_FLAG_NONE));
 
 	ClassDB::bind_method(D_METHOD("track_set_interpolation_type", "track_idx", "interpolation"), &Animation::track_set_interpolation_type);
 	ClassDB::bind_method(D_METHOD("track_get_interpolation_type", "track_idx"), &Animation::track_get_interpolation_type);

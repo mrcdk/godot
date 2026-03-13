@@ -78,7 +78,6 @@
 #include "scene/resources/animation_event.h"
 #include "servers/audio/audio_stream.h"
 #include "servers/display/display_server.h"
-#include <cstddef>
 
 constexpr double FPS_DECIMAL = 1.0;
 constexpr double SECOND_DECIMAL = 0.0001;
