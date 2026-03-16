@@ -32,6 +32,7 @@
 #include "animation_tree.compat.inc"
 
 #include "animation_blend_tree.h"
+#include "core/os/memory.h"
 #include "scene/animation/animation_player.h"
 
 void AnimationNode::get_parameter_list(List<PropertyInfo> *r_list) const {
@@ -140,7 +141,7 @@ void AnimationNode::get_child_nodes(List<ChildNode> *r_child_nodes) {
 void AnimationNode::blend_animation(const StringName &p_animation, AnimationMixer::PlaybackInfo p_playback_info) {
 	ERR_FAIL_NULL(process_state);
 	p_playback_info.track_weights = Vector<real_t>(node_state.track_weights);
-	process_state->tree->make_animation_instance(p_animation, p_playback_info);
+	process_state->tree->make_animation_instance(p_animation, p_playback_info, get_instance_id());
 }
 
 AnimationNode::NodeTimeInfo AnimationNode::_pre_process(ProcessState *p_process_state, AnimationMixer::PlaybackInfo p_playback_info, bool p_test_only) {
@@ -757,6 +758,13 @@ void AnimationTree::_animation_node_removed(const ObjectID &p_oid, const StringN
 		if (E.name.begins_with(base_path)) {
 			property_map.erase(E.name);
 		}
+	}
+
+	if (active_events_cache.has(p_oid)) {
+		for (KeyValue<StringName, AnimationMixer::CacheActiveEvents *> &E : active_events_cache.get(p_oid)) {
+			memdelete(E.value);
+		}
+		active_events_cache.erase(p_oid);
 	}
 
 	// Update tree second.

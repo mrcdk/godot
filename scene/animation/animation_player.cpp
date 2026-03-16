@@ -249,7 +249,7 @@ void AnimationPlayer::_process_playback_data(PlaybackData &cd, double p_delta, f
 	pi.is_external_seeking = !p_internal_seeked && !p_started;
 	pi.looped_flag = looped_flag;
 	pi.weight = p_blend;
-	make_animation_instance(cd.animation_name, pi);
+	make_animation_instance(cd.animation_name, pi, get_instance_id());
 }
 
 float AnimationPlayer::get_current_blend_amount() {

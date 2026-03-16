@@ -31,6 +31,7 @@
 #pragma once
 
 #include "core/math/math_funcs.h"
+#include "core/object/object_id.h"
 #include "core/templates/a_hash_map.h"
 #include "scene/animation/tween.h"
 #include "scene/main/node.h"
@@ -98,6 +99,7 @@ public:
 	struct AnimationInstance {
 		AnimationData animation_data;
 		PlaybackInfo playback_info;
+		ObjectID source_obj_id;
 	};
 
 protected:
@@ -329,12 +331,15 @@ protected:
 	};
 
 	struct TrackCacheEvent : public TrackCache {
-		AHashMap<int, ActiveEventInfo> active_events;
-		double last_time = -1;
-		double last_delta = -1;
 		TrackCacheEvent() {
 			type = Animation::TYPE_EVENT;
 		}
+	};
+
+	struct CacheActiveEvents {
+		AHashMap<int, ActiveEventInfo> active_events;
+		double last_time = -1;
+		double last_delta = -1;
 	};
 
 	RootMotionCache root_motion_cache;
@@ -342,6 +347,7 @@ protected:
 	AHashMap<Ref<Animation>, LocalVector<TrackCache *>> animation_track_num_to_track_cache;
 	HashSet<TrackCache *> playing_caches;
 	Vector<Node *> playing_audio_stream_players;
+	AHashMap<ObjectID, AHashMap<StringName, CacheActiveEvents *>> active_events_cache;
 
 	// Helpers.
 	void _clear_caches();
@@ -485,7 +491,7 @@ public:
 	Vector3 get_root_motion_scale_accumulator() const;
 
 	/* ---- Blending processor ---- */
-	void make_animation_instance(const StringName &p_name, const PlaybackInfo p_playback_info);
+	void make_animation_instance(const StringName &p_name, const PlaybackInfo p_playback_info, const ObjectID p_source_obj_id);
 	void clear_animation_instances();
 	virtual void advance(double p_time);
 	virtual void clear_caches(); // Must be called by hand if an animation was modified after added.

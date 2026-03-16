@@ -37,6 +37,7 @@
 #include "core/object/object.h"
 #include "core/os/memory.h"
 #include "core/string/string_name.h"
+#include "core/templates/a_hash_map.h"
 #include "core/templates/local_vector.h"
 #include "core/typedefs.h"
 #include "core/variant/variant.h"
@@ -588,6 +589,13 @@ void AnimationMixer::_clear_caches() {
 	animation_track_num_to_track_cache.clear();
 	cache_valid = false;
 	capture_cache.clear();
+
+	for (KeyValue<ObjectID, AHashMap<StringName, CacheActiveEvents *>> &A : active_events_cache) {
+		for (KeyValue<StringName, CacheActiveEvents *> &E : A.value) {
+			memdelete(E.value);
+		}
+	}
+	active_events_cache.clear();
 
 	emit_signal(SNAME("caches_cleared"));
 }
@@ -1858,12 +1866,19 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 					}
 				} break;
 				case Animation::TYPE_EVENT: {
-					TrackCacheEvent *t = static_cast<TrackCacheEvent *>(track);
-					AHashMap<int, ActiveEventInfo> &active_events = t->active_events;
+					if (!active_events_cache.has(ai.source_obj_id)) {
+						active_events_cache[ai.source_obj_id] = AHashMap<StringName, CacheActiveEvents *>();
+					}
+					if (!active_events_cache[ai.source_obj_id].has(ai.animation_data.name)) {
+						active_events_cache[ai.source_obj_id][ai.animation_data.name] = memnew(CacheActiveEvents);
+					}
 
 					if (p_update_only) {
 						continue;
 					}
+
+					CacheActiveEvents *t = active_events_cache.get(ai.source_obj_id).get(ai.animation_data.name);
+					AHashMap<int, ActiveEventInfo> &active_events = t->active_events;
 
 					bool looped = looped_flag != Animation::LOOPED_FLAG_NONE;
 
@@ -1943,9 +1958,7 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 							continue;
 						}
 						if (ev_info.one_shot()) {
-							if (!Math::is_zero_approx(blend)) {
-								emit_signal(SNAME("animation_event_started"), ai.animation_data.name, event, blend);
-							}
+							emit_signal(SNAME("animation_event_started"), ai.animation_data.name, event, blend);
 							to_delete.push_back(key_idx);
 							continue;
 						}
@@ -1956,9 +1969,7 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 							ev_info.looped_start = emit_start || ev_info.start_fired; // if we need to emit the start or we already emitted it then we may need to emit the end too
 						}
 						if (emit_start) {
-							if (!Math::is_zero_approx(blend)) {
-								emit_signal(SNAME("animation_event_started"), ai.animation_data.name, event, blend);
-							}
+							emit_signal(SNAME("animation_event_started"), ai.animation_data.name, event, blend);
 							ev_info.start_fired = true;
 						}
 						bool emit_end = ev_info.can_emit_end(time, backward);
@@ -1966,9 +1977,7 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 							emit_end = ev_info.can_emit_end(t->last_time + t->last_delta, backward);
 						}
 						if (emit_end) {
-							if (!Math::is_zero_approx(blend)) {
-								emit_signal(SNAME("animation_event_ended"), ai.animation_data.name, event, blend);
-							}
+							emit_signal(SNAME("animation_event_ended"), ai.animation_data.name, event, blend);
 							ev_info.end_fired = true;
 							to_delete.push_back(key_idx);
 						}
@@ -2173,7 +2182,7 @@ void AnimationMixer::_call_object(ObjectID p_object_id, const StringName &p_meth
 	}
 }
 
-void AnimationMixer::make_animation_instance(const StringName &p_name, const PlaybackInfo p_playback_info) {
+void AnimationMixer::make_animation_instance(const StringName &p_name, const PlaybackInfo p_playback_info, const ObjectID p_source_obj_id) {
 	ERR_FAIL_COND(!has_animation(p_name));
 
 	AnimationData ad;
@@ -2184,6 +2193,7 @@ void AnimationMixer::make_animation_instance(const StringName &p_name, const Pla
 	AnimationInstance ai;
 	ai.animation_data = ad;
 	ai.playback_info = p_playback_info;
+	ai.source_obj_id = p_source_obj_id;
 
 	animation_instances.push_back(ai);
 }
@@ -2356,7 +2366,7 @@ Ref<AnimatedValuesBackup> AnimationMixer::make_backup() {
 	pi.end = reset_anim->get_length();
 	pi.seeked = true;
 	pi.weight = 1.0;
-	make_animation_instance(SceneStringName(RESET), pi);
+	make_animation_instance(SceneStringName(RESET), pi, get_instance_id());
 	_build_backup_track_cache();
 
 	backup->set_data(AHashMap<Animation::TypeHash, TrackCache *, HashHasher>(track_cache));
