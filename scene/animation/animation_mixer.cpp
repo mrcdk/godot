@@ -1958,7 +1958,7 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 							continue;
 						}
 						if (ev_info.one_shot()) {
-							emit_signal(SNAME("animation_event_started"), ai.animation_data.name, event, blend);
+							emit_signal(SNAME("animation_event_started"), ai.animation_data.name, event, ai.source_path, blend);
 							to_delete.push_back(key_idx);
 							continue;
 						}
@@ -1969,7 +1969,7 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 							ev_info.looped_start = emit_start || ev_info.start_fired; // if we need to emit the start or we already emitted it then we may need to emit the end too
 						}
 						if (emit_start) {
-							emit_signal(SNAME("animation_event_started"), ai.animation_data.name, event, blend);
+							emit_signal(SNAME("animation_event_started"), ai.animation_data.name, event, ai.source_path, blend);
 							ev_info.start_fired = true;
 						}
 						bool emit_end = ev_info.can_emit_end(time, backward);
@@ -1977,7 +1977,7 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 							emit_end = ev_info.can_emit_end(t->last_time + t->last_delta, backward);
 						}
 						if (emit_end) {
-							emit_signal(SNAME("animation_event_ended"), ai.animation_data.name, event, blend);
+							emit_signal(SNAME("animation_event_ended"), ai.animation_data.name, event, ai.source_path, blend);
 							ev_info.end_fired = true;
 							to_delete.push_back(key_idx);
 						}
@@ -2182,7 +2182,7 @@ void AnimationMixer::_call_object(ObjectID p_object_id, const StringName &p_meth
 	}
 }
 
-void AnimationMixer::make_animation_instance(const StringName &p_name, const PlaybackInfo p_playback_info, const ObjectID p_source_obj_id) {
+void AnimationMixer::make_animation_instance(const StringName &p_name, const PlaybackInfo p_playback_info, const ObjectID p_source_obj_id, const String &p_source_path) {
 	ERR_FAIL_COND(!has_animation(p_name));
 
 	AnimationData ad;
@@ -2194,6 +2194,7 @@ void AnimationMixer::make_animation_instance(const StringName &p_name, const Pla
 	ai.animation_data = ad;
 	ai.playback_info = p_playback_info;
 	ai.source_obj_id = p_source_obj_id;
+	ai.source_path = p_source_path;
 
 	animation_instances.push_back(ai);
 }
@@ -2366,7 +2367,7 @@ Ref<AnimatedValuesBackup> AnimationMixer::make_backup() {
 	pi.end = reset_anim->get_length();
 	pi.seeked = true;
 	pi.weight = 1.0;
-	make_animation_instance(SceneStringName(RESET), pi, get_instance_id());
+	make_animation_instance(SceneStringName(RESET), pi, get_instance_id(), get_name());
 	_build_backup_track_cache();
 
 	backup->set_data(AHashMap<Animation::TypeHash, TrackCache *, HashHasher>(track_cache));
@@ -2630,8 +2631,8 @@ void AnimationMixer::_bind_methods() {
 	ADD_SIGNAL(MethodInfo(SNAME("animation_libraries_updated")));
 	ADD_SIGNAL(MethodInfo(SNAME("animation_finished"), PropertyInfo(Variant::STRING_NAME, "anim_name")));
 	ADD_SIGNAL(MethodInfo(SNAME("animation_started"), PropertyInfo(Variant::STRING_NAME, "anim_name")));
-	ADD_SIGNAL(MethodInfo(SNAME("animation_event_started"), PropertyInfo(Variant::STRING_NAME, "anim_name"), PropertyInfo(Variant::STRING_NAME, "event"), PropertyInfo(Variant::FLOAT, "weight")));
-	ADD_SIGNAL(MethodInfo(SNAME("animation_event_ended"), PropertyInfo(Variant::STRING_NAME, "anim_name"), PropertyInfo(Variant::STRING_NAME, "event"), PropertyInfo(Variant::FLOAT, "weight")));
+	ADD_SIGNAL(MethodInfo(SNAME("animation_event_started"), PropertyInfo(Variant::STRING_NAME, "anim_name"), PropertyInfo(Variant::STRING_NAME, "event"), PropertyInfo(Variant::STRING, "source_path"), PropertyInfo(Variant::FLOAT, "weight")));
+	ADD_SIGNAL(MethodInfo(SNAME("animation_event_ended"), PropertyInfo(Variant::STRING_NAME, "anim_name"), PropertyInfo(Variant::STRING_NAME, "event"), PropertyInfo(Variant::STRING, "source_path"), PropertyInfo(Variant::FLOAT, "weight")));
 	ADD_SIGNAL(MethodInfo(SNAME("caches_cleared")));
 	ADD_SIGNAL(MethodInfo(SNAME("mixer_applied")));
 	ADD_SIGNAL(MethodInfo(SNAME("mixer_updated"))); // For updating dummy player.

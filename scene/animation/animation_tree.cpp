@@ -141,7 +141,8 @@ void AnimationNode::get_child_nodes(List<ChildNode> *r_child_nodes) {
 void AnimationNode::blend_animation(const StringName &p_animation, AnimationMixer::PlaybackInfo p_playback_info) {
 	ERR_FAIL_NULL(process_state);
 	p_playback_info.track_weights = Vector<real_t>(node_state.track_weights);
-	process_state->tree->make_animation_instance(p_animation, p_playback_info, get_instance_id());
+	String source_path = String(process_state->tree->property_reference_map[get_instance_id()]).replace_first(Animation::PARAMETERS_BASE_PATH, "").trim_suffix("/");
+	process_state->tree->make_animation_instance(p_animation, p_playback_info, get_instance_id(), source_path);
 }
 
 AnimationNode::NodeTimeInfo AnimationNode::_pre_process(ProcessState *p_process_state, AnimationMixer::PlaybackInfo p_playback_info, bool p_test_only) {

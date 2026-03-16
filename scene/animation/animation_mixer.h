@@ -100,6 +100,7 @@ public:
 		AnimationData animation_data;
 		PlaybackInfo playback_info;
 		ObjectID source_obj_id;
+		String source_path;
 	};
 
 protected:
@@ -491,7 +492,7 @@ public:
 	Vector3 get_root_motion_scale_accumulator() const;
 
 	/* ---- Blending processor ---- */
-	void make_animation_instance(const StringName &p_name, const PlaybackInfo p_playback_info, const ObjectID p_source_obj_id);
+	void make_animation_instance(const StringName &p_name, const PlaybackInfo p_playback_info, const ObjectID p_source_obj_id, const String &p_source_path);
 	void clear_animation_instances();
 	virtual void advance(double p_time);
 	virtual void clear_caches(); // Must be called by hand if an animation was modified after added.
