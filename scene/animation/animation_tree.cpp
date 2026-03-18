@@ -141,7 +141,10 @@ void AnimationNode::get_child_nodes(List<ChildNode> *r_child_nodes) {
 void AnimationNode::blend_animation(const StringName &p_animation, AnimationMixer::PlaybackInfo p_playback_info) {
 	ERR_FAIL_NULL(process_state);
 	p_playback_info.track_weights = Vector<real_t>(node_state.track_weights);
-	String source_path = String(process_state->tree->property_reference_map[get_instance_id()]).replace_first(Animation::PARAMETERS_BASE_PATH, "").trim_suffix("/");
+	String source_path;
+	if (process_state->tree->source_reference_map.has(get_instance_id())) {
+		source_path = process_state->tree->source_reference_map.get(get_instance_id());
+	}
 	process_state->tree->make_animation_instance(p_animation, p_playback_info, get_instance_id(), source_path);
 }
 
@@ -746,6 +749,8 @@ void AnimationTree::_animation_node_renamed(const ObjectID &p_oid, const String 
 			property_map.erase(E.name);
 		}
 	}
+	String source_path = new_base.replace_first(Animation::PARAMETERS_BASE_PATH, "").trim_suffix("/");
+	source_reference_map[p_oid] = source_path;
 
 	// Update tree second.
 	properties_dirty = true;
@@ -780,6 +785,8 @@ void AnimationTree::_update_properties_for_node(const String &p_base_path, Ref<A
 	}
 	if (!property_reference_map.has(p_node->get_instance_id())) {
 		property_reference_map[p_node->get_instance_id()] = p_base_path;
+		String source_path = p_base_path.replace_first(Animation::PARAMETERS_BASE_PATH, "").trim_suffix("/");
+		source_reference_map[p_node->get_instance_id()] = source_path;
 	}
 
 	if (p_node->get_input_count() && !input_activity_map.has(p_base_path)) {
@@ -828,6 +835,7 @@ void AnimationTree::_update_properties() const {
 	properties.clear();
 	property_reference_map.clear();
 	property_parent_map.clear();
+	source_reference_map.clear();
 	input_activity_map.clear();
 	input_activity_map_get.clear();
 

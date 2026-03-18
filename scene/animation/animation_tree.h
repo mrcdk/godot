@@ -288,6 +288,7 @@ private:
 	mutable AHashMap<StringName, AHashMap<StringName, StringName>> property_parent_map;
 	mutable AHashMap<ObjectID, StringName> property_reference_map;
 	mutable AHashMap<StringName, Pair<Variant, bool>> property_map; // Property value and read-only flag.
+	mutable AHashMap<ObjectID, StringName> source_reference_map; // The AnimationNode paths used in events
 
 	mutable bool properties_dirty = true;
 
