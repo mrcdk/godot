@@ -590,10 +590,8 @@ void AnimationMixer::_clear_caches() {
 	cache_valid = false;
 	capture_cache.clear();
 
-	for (KeyValue<ObjectID, AHashMap<StringName, CacheActiveEvents *>> &A : active_events_cache) {
-		for (KeyValue<StringName, CacheActiveEvents *> &E : A.value) {
-			memdelete(E.value);
-		}
+	for (KeyValue<ActiveEventHash, CacheActiveEvents *> &E : active_events_cache) {
+		memdelete(E.value);
 	}
 	active_events_cache.clear();
 
@@ -1021,6 +1019,7 @@ void AnimationMixer::_process_animation(double p_delta, bool p_update_only) {
 		_blend_capture(p_delta);
 		_blend_calc_total_weight();
 		_blend_process(p_delta, p_update_only);
+		_events_process(p_delta, p_update_only);
 		clear_animation_instances();
 		_blend_apply();
 		_blend_post_process();
@@ -1204,6 +1203,7 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 #ifdef TOOLS_ENABLED
 	bool can_call = is_inside_tree() && !Engine::get_singleton()->is_editor_hint();
 #endif // TOOLS_ENABLED
+	LocalVector<ActiveEventHash> active_events_processed;
 	for (const AnimationInstance &ai : animation_instances) {
 		Ref<Animation> a = ai.animation_data.animation;
 		double time = ai.playback_info.time;
@@ -1866,129 +1866,6 @@ void AnimationMixer::_blend_process(double p_delta, bool p_update_only) {
 					}
 				} break;
 				case Animation::TYPE_EVENT: {
-					if (!active_events_cache.has(ai.source_obj_id)) {
-						active_events_cache[ai.source_obj_id] = AHashMap<StringName, CacheActiveEvents *>();
-					}
-					if (!active_events_cache[ai.source_obj_id].has(ai.animation_data.name)) {
-						active_events_cache[ai.source_obj_id][ai.animation_data.name] = memnew(CacheActiveEvents);
-					}
-
-					if (p_update_only) {
-						continue;
-					}
-
-					CacheActiveEvents *t = active_events_cache.get(ai.source_obj_id).get(ai.animation_data.name);
-					AHashMap<int, ActiveEventInfo> &active_events = t->active_events;
-
-					bool looped = looped_flag != Animation::LOOPED_FLAG_NONE;
-
-					double from_time = time - delta;
-					double to_time = time;
-
-					start = CLAMP(start, 0.0, a->get_length());
-					end = CLAMP(end, 0.0, a->get_length());
-
-					if (from_time > to_time) {
-						SWAP(from_time, to_time);
-					}
-					switch (a->get_loop_mode()) {
-						case Animation::LOOP_NONE: {
-						} break;
-						case Animation::LOOP_LINEAR: {
-							if (from_time > end || from_time < start) {
-								from_time = Math::fposmod(from_time, end);
-							}
-							if (to_time > end || to_time < start) {
-								to_time = Math::fposmod(to_time, end);
-							}
-
-							if (from_time > to_time) {
-								looped = true;
-							}
-
-						} break;
-						case Animation::LOOP_PINGPONG: {
-							if (from_time > end || from_time < start) {
-								from_time = Math::pingpong(from_time, (double)a->get_length());
-							}
-							if (to_time > end || to_time < start) {
-								to_time = Math::pingpong(to_time, (double)a->get_length());
-							}
-
-							if (!backward && Math::is_equal_approx(to_time, end)) {
-								looped = false;
-							} else if (backward && Math::is_equal_approx(from_time, start)) {
-								looped = false;
-							}
-						} break;
-					}
-
-					List<int> indices;
-					if (seeked) {
-						int idx = a->track_find_key(i, time, is_external_seeking ? Animation::FIND_MODE_NEAREST : Animation::FIND_MODE_EXACT, true);
-						if (idx > -1) {
-							indices.push_back(idx);
-						}
-					} else {
-						a->track_get_key_indices_in_range(i, time, delta, start, end, &indices, looped_flag);
-					}
-
-					for (int &idx : indices) {
-						if (active_events.has(idx)) {
-							continue;
-						}
-						Ref<AnimationEvent> event = a->event_track_get_key_event(i, idx);
-						if (event.is_valid()) {
-							ActiveEventInfo ev_info;
-							ev_info.start = CLAMP(a->track_get_key_time(i, idx), start, end);
-							ev_info.end = CLAMP(ev_info.start + event->get_duration(), start, end);
-							ev_info.start_fired = false;
-							ev_info.end_fired = false;
-							active_events[idx] = ev_info;
-						}
-					}
-
-					LocalVector<int> to_delete;
-					for (KeyValue<int, ActiveEventInfo> &E : active_events) {
-						int key_idx = E.key;
-						ActiveEventInfo &ev_info = E.value;
-						Ref<AnimationEvent> event = a->event_track_get_key_event(i, key_idx);
-						if (!event.is_valid()) {
-							to_delete.push_back(key_idx);
-							continue;
-						}
-						if (ev_info.one_shot()) {
-							emit_signal(SNAME("animation_event_started"), ai.animation_data.name, event, ai.source_path, blend);
-							to_delete.push_back(key_idx);
-							continue;
-						}
-						bool emit_start = ev_info.can_emit_start(time, backward);
-						if (looped && !emit_start) {
-							// if we looped and the start wasn't fired then check as if the animation continued from last frame
-							emit_start = ev_info.can_emit_start(t->last_time + t->last_delta, backward);
-							ev_info.looped_start = emit_start || ev_info.start_fired; // if we need to emit the start or we already emitted it then we may need to emit the end too
-						}
-						if (emit_start) {
-							emit_signal(SNAME("animation_event_started"), ai.animation_data.name, event, ai.source_path, blend);
-							ev_info.start_fired = true;
-						}
-						bool emit_end = ev_info.can_emit_end(time, backward);
-						if (looped && ev_info.looped_start && !emit_end) {
-							emit_end = ev_info.can_emit_end(t->last_time + t->last_delta, backward);
-						}
-						if (emit_end) {
-							emit_signal(SNAME("animation_event_ended"), ai.animation_data.name, event, ai.source_path, blend);
-							ev_info.end_fired = true;
-							to_delete.push_back(key_idx);
-						}
-					}
-
-					for (int k : to_delete) {
-						active_events.erase(k);
-					}
-
-					t->last_time = time;
-					t->last_delta = delta;
 				} break;
 			}
 		}
@@ -2182,6 +2059,203 @@ void AnimationMixer::_call_object(ObjectID p_object_id, const StringName &p_meth
 	}
 }
 
+void AnimationMixer::_events_process(double p_delta, bool p_update_only) {
+	if (p_update_only) {
+		return;
+	}
+
+	LocalVector<ActiveEventHash> cache_delete;
+	for (auto E : active_events_cache) {
+		auto cache = E.value;
+
+		if (cache->processed) {
+			cache->processed = false;
+			continue;
+		}
+
+		for (auto info : cache->active_events) {
+			if (info.value->start_fired && !info.value->end_fired) {
+				emit_signal(SNAME("animation_event_ended"), cache->animation_name, info.value->event, cache->source_path, 0.0);
+				info.value->end_fired = true;
+			}
+		}
+		cache_delete.push_back(E.key);
+	}
+
+	for (ActiveEventHash hash : cache_delete) {
+		auto cache = active_events_cache.get(hash);
+		for (auto E : cache->active_events) {
+			memdelete(E.value);
+		}
+		memdelete(cache);
+		active_events_cache.erase(hash);
+	}
+
+	for (const AnimationInstance &ai : animation_instances) {
+		Ref<Animation> a = ai.animation_data.animation;
+		double time = ai.playback_info.time;
+		double delta = ai.playback_info.delta;
+		double start = ai.playback_info.start;
+		double end = ai.playback_info.end;
+		bool seeked = ai.playback_info.seeked;
+		Animation::LoopedFlag looped_flag = ai.playback_info.looped_flag;
+		bool is_external_seeking = ai.playback_info.is_external_seeking;
+		if (Math::is_zero_approx(delta) && !(seeked || is_external_seeking)) {
+			// skip animations that didn't advance
+			continue;
+		}
+
+		real_t weight = ai.playback_info.weight;
+		const real_t *track_weights_ptr = ai.playback_info.track_weights.ptr();
+		int track_weights_count = ai.playback_info.track_weights.size();
+		bool backward = std::signbit(delta); // This flag is used by the root motion calculates or detecting the end of audio stream.
+
+		bool looped = looped_flag != Animation::LOOPED_FLAG_NONE;
+
+		double from_time = time - delta;
+		double to_time = time;
+
+		start = CLAMP(start, 0.0, a->get_length());
+		end = CLAMP(end, 0.0, a->get_length());
+
+		if (from_time > to_time) {
+			SWAP(from_time, to_time);
+		}
+		switch (a->get_loop_mode()) {
+			case Animation::LOOP_NONE: {
+			} break;
+			case Animation::LOOP_LINEAR: {
+				if (from_time > end || from_time < start) {
+					from_time = Math::fposmod(from_time, end);
+				}
+				if (to_time > end || to_time < start) {
+					to_time = Math::fposmod(to_time, end);
+				}
+
+				if (from_time > to_time) {
+					looped = true;
+				}
+
+			} break;
+			case Animation::LOOP_PINGPONG: {
+				if (from_time > end || from_time < start) {
+					from_time = Math::pingpong(from_time, (double)a->get_length());
+				}
+				if (to_time > end || to_time < start) {
+					to_time = Math::pingpong(to_time, (double)a->get_length());
+				}
+
+				if (!backward && Math::is_equal_approx(to_time, end)) {
+					looped = false;
+				} else if (backward && Math::is_equal_approx(from_time, start)) {
+					looped = false;
+				}
+			} break;
+		}
+
+		const LocalVector<Animation::Track *> &tracks = a->get_tracks();
+		Animation::Track *const *tracks_ptr = tracks.ptr();
+		LocalVector<TrackCache *> &track_num_to_track_cache = animation_track_num_to_track_cache[a];
+		int count = tracks.size();
+		for (int i = 0; i < count; i++) {
+			const Animation::Track *animation_track = tracks_ptr[i];
+			if (!animation_track->enabled || animation_track->type != Animation::TYPE_EVENT) {
+				continue;
+			}
+
+			TrackCache *track = track_num_to_track_cache[i];
+			if (track == nullptr) {
+				continue; // No path, but avoid error spamming.
+			}
+			int blend_idx = track->blend_idx;
+			ERR_CONTINUE(blend_idx < 0 || blend_idx >= track_count);
+			real_t blend = blend_idx < track_weights_count ? track_weights_ptr[blend_idx] * weight : weight;
+			if (!deterministic) {
+				// If non-deterministic, do normalization.
+				// It would be better to make this if statement outside the for loop, but come here since too much code...
+				if (Math::is_zero_approx(track->total_weight)) {
+					continue;
+				}
+				blend = blend / track->total_weight;
+			}
+
+			if (!active_events_cache.has(ai.active_event_hash)) {
+				CacheActiveEvents *t = memnew(CacheActiveEvents);
+				t->animation_name = ai.animation_data.name;
+				t->source_path = ai.source_path;
+				active_events_cache[ai.active_event_hash] = t;
+			}
+
+			CacheActiveEvents *t = active_events_cache.get(ai.active_event_hash);
+			t->processed = true;
+			AHashMap<int, ActiveEventInfo *> &active_events = t->active_events;
+
+			List<int> indices;
+			if (seeked) {
+				int idx = a->track_find_key(i, time, is_external_seeking ? Animation::FIND_MODE_NEAREST : Animation::FIND_MODE_EXACT, true);
+				if (idx > -1) {
+					indices.push_back(idx);
+				}
+			} else {
+				a->track_get_key_indices_in_range(i, time, delta, start, end, &indices, looped_flag);
+			}
+
+			for (int &idx : indices) {
+				if (active_events.has(idx)) {
+					continue;
+				}
+				Ref<AnimationEvent> event = a->event_track_get_key_event(i, idx);
+				if (event.is_valid()) {
+					ActiveEventInfo *ev_info = memnew(ActiveEventInfo);
+					ev_info->event = event;
+					ev_info->start = CLAMP(a->track_get_key_time(i, idx), start, end);
+					ev_info->end = CLAMP(ev_info->start + event->get_duration(), start, end);
+					ev_info->start_fired = false;
+					ev_info->end_fired = false;
+					active_events[idx] = ev_info;
+				}
+			}
+
+			LocalVector<int> to_delete;
+			for (KeyValue<int, ActiveEventInfo *> &E : active_events) {
+				int key_idx = E.key;
+				ActiveEventInfo *ev_info = E.value;
+				if (ev_info->one_shot()) {
+					emit_signal(SNAME("animation_event_started"), t->animation_name, ev_info->event, t->source_path, blend);
+					to_delete.push_back(key_idx);
+					continue;
+				}
+				bool emit_start = ev_info->can_emit_start(time, backward);
+				if (looped && !emit_start) {
+					// if we looped and the start wasn't fired then check as if the animation continued from last frame
+					emit_start = ev_info->can_emit_start(t->last_time + t->last_delta, backward);
+					ev_info->looped_start = emit_start || ev_info->start_fired; // if we need to emit the start or we already emitted it then we may need to emit the end too
+				}
+				if (emit_start) {
+					emit_signal(SNAME("animation_event_started"), t->animation_name, ev_info->event, t->source_path, blend);
+					ev_info->start_fired = true;
+				}
+				bool emit_end = ev_info->can_emit_end(time, backward);
+				if (looped && ev_info->looped_start && !emit_end) {
+					emit_end = ev_info->can_emit_end(t->last_time + t->last_delta, backward);
+				}
+				if (emit_end) {
+					emit_signal(SNAME("animation_event_ended"), t->animation_name, ev_info->event, t->source_path, blend);
+					ev_info->end_fired = true;
+					to_delete.push_back(key_idx);
+				}
+			}
+
+			for (int k : to_delete) {
+				active_events.erase(k);
+			}
+
+			t->last_time = time;
+			t->last_delta = delta;
+		}
+	}
+}
+
 void AnimationMixer::make_animation_instance(const StringName &p_name, const PlaybackInfo p_playback_info, const ObjectID p_source_obj_id, const String &p_source_path) {
 	ERR_FAIL_COND(!has_animation(p_name));
 
@@ -2195,6 +2269,7 @@ void AnimationMixer::make_animation_instance(const StringName &p_name, const Pla
 	ai.playback_info = p_playback_info;
 	ai.source_obj_id = p_source_obj_id;
 	ai.source_path = p_source_path;
+	ai.active_event_hash = HashMapHasherDefault::hash(Pair<ObjectID, StringName>(p_source_obj_id, p_name));
 
 	animation_instances.push_back(ai);
 }

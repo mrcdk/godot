@@ -33,11 +33,13 @@
 #include "core/math/math_funcs.h"
 #include "core/object/object_id.h"
 #include "core/templates/a_hash_map.h"
+#include "core/templates/hashfuncs.h"
 #include "scene/animation/tween.h"
 #include "scene/main/node.h"
 #include "scene/resources/animation.h"
 #include "scene/resources/animation_library.h"
 #include "scene/resources/audio_stream_polyphonic.h"
+#include <cstdint>
 
 class AnimatedValuesBackup;
 
@@ -53,6 +55,8 @@ class AnimationMixer : public Node {
 	bool is_GDVIRTUAL_CALL_post_process_key_value = true;
 
 public:
+	typedef uint32_t ActiveEventHash;
+
 	enum AnimationCallbackModeProcess {
 		ANIMATION_CALLBACK_MODE_PROCESS_PHYSICS,
 		ANIMATION_CALLBACK_MODE_PROCESS_IDLE,
@@ -101,6 +105,7 @@ public:
 		PlaybackInfo playback_info;
 		ObjectID source_obj_id;
 		String source_path;
+		ActiveEventHash active_event_hash;
 	};
 
 protected:
@@ -310,6 +315,7 @@ protected:
 	struct ActiveEventInfo {
 		double start;
 		double end;
+		Ref<AnimationEvent> event;
 		bool start_fired = false;
 		bool end_fired = false;
 		bool looped_start = false;
@@ -338,9 +344,12 @@ protected:
 	};
 
 	struct CacheActiveEvents {
-		AHashMap<int, ActiveEventInfo> active_events;
+		AHashMap<int, ActiveEventInfo *> active_events;
+		StringName animation_name;
+		String source_path;
 		double last_time = -1;
 		double last_delta = -1;
+		bool processed = false;
 	};
 
 	RootMotionCache root_motion_cache;
@@ -348,7 +357,7 @@ protected:
 	AHashMap<Ref<Animation>, LocalVector<TrackCache *>> animation_track_num_to_track_cache;
 	HashSet<TrackCache *> playing_caches;
 	Vector<Node *> playing_audio_stream_players;
-	AHashMap<ObjectID, AHashMap<StringName, CacheActiveEvents *>> active_events_cache;
+	AHashMap<ActiveEventHash, CacheActiveEvents *, HashHasher> active_events_cache;
 
 	// Helpers.
 	void _clear_caches();
@@ -412,6 +421,7 @@ protected:
 	void _blend_apply();
 	virtual void _blend_post_process();
 	void _call_object(ObjectID p_object_id, const StringName &p_method, const Vector<Variant> &p_params, bool p_deferred);
+	void _events_process(double p_delta, bool p_update_only = false);
 
 	/* ---- Capture feature ---- */
 	struct CaptureCache {

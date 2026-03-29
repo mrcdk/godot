@@ -766,13 +766,6 @@ void AnimationTree::_animation_node_removed(const ObjectID &p_oid, const StringN
 		}
 	}
 
-	if (active_events_cache.has(p_oid)) {
-		for (KeyValue<StringName, AnimationMixer::CacheActiveEvents *> &E : active_events_cache.get(p_oid)) {
-			memdelete(E.value);
-		}
-		active_events_cache.erase(p_oid);
-	}
-
 	// Update tree second.
 	properties_dirty = true;
 	_update_properties();
