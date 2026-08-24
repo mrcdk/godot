@@ -204,6 +204,7 @@ public:
 
 	Vector<Ref<Shape3D>> convex_decompose(const Ref<MeshConvexDecompositionSettings> &p_settings) const;
 	Ref<ConvexPolygonShape3D> create_convex_shape(bool p_clean = true, bool p_simplify = false) const;
+	TypedArray<ConvexPolygonShape3D> create_multiple_convex_shapes(const Ref<MeshConvexDecompositionSettings> &p_settings) const;
 	Ref<ConcavePolygonShape3D> create_trimesh_shape() const;
 #endif // PHYSICS_3D_DISABLED
 

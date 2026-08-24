@@ -33,6 +33,7 @@
 #include "core/math/convex_hull.h"
 #include "core/object/class_db.h"
 #include "core/templates/pair.h"
+#include "core/variant/typed_array.h"
 #include "scene/resources/surface_tool.h"
 #include "servers/rendering/rendering_server.h"
 
@@ -577,6 +578,24 @@ Ref<ConvexPolygonShape3D> Mesh::create_convex_shape(bool p_clean, bool p_simplif
 	return shape;
 }
 
+TypedArray<ConvexPolygonShape3D> Mesh::create_multiple_convex_shapes(const Ref<MeshConvexDecompositionSettings> &p_settings) const {
+	Ref<MeshConvexDecompositionSettings> settings;
+	if (p_settings.is_valid()) {
+		settings = p_settings;
+	} else {
+		settings.instantiate();
+	}
+
+	Vector<Ref<Shape3D>> shapes = convex_decompose(settings);
+
+	TypedArray<ConvexPolygonShape3D> ret;
+	for (int i = 0; i < shapes.size(); ++i) {
+		ret.push_back(shapes[i]);
+	}
+
+	return ret;
+}
+
 Ref<ConcavePolygonShape3D> Mesh::create_trimesh_shape() const {
 	Vector<Face3> faces = get_faces();
 	if (faces.is_empty()) {
@@ -836,6 +855,7 @@ void Mesh::_bind_methods() {
 #ifndef PHYSICS_3D_DISABLED
 	ClassDB::bind_method(D_METHOD("create_trimesh_shape"), &Mesh::create_trimesh_shape);
 	ClassDB::bind_method(D_METHOD("create_convex_shape", "clean", "simplify"), &Mesh::create_convex_shape, DEFVAL(true), DEFVAL(false));
+	ClassDB::bind_method(D_METHOD("create_multiple_convex_shapes", "settings"), &Mesh::create_multiple_convex_shapes, DEFVAL(Ref<MeshConvexDecompositionSettings>()));
 #endif
 
 	BIND_ENUM_CONSTANT(PRIMITIVE_POINTS);

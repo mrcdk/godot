@@ -1,5 +1,6 @@
-<?xml version="1.0" encoding="UTF-8" ?>
-<class name="Mesh" inherits="Resource" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+<?xml version="1.0" encoding="UTF-8"?>
+<class name="Mesh" inherits="Resource" api_type="core"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
 	<brief_description>
 		A [Resource] that contains vertex array-based geometry.
 	</brief_description>
@@ -120,6 +121,13 @@
 				If [param simplify] is [code]true[/code], the geometry can be further simplified to reduce the number of vertices. Disabled by default.
 			</description>
 		</method>
+		<method name="create_multiple_convex_shapes" qualifiers="const">
+			<return type="ConvexPolygonShape3D[]" />
+			<param index="0" name="settings" type="MeshConvexDecompositionSettings" default="null" />
+			<description>
+				Calculate multiple [ConvexPolygonShape3D] from the mesh geometry via convex decomposition. The convex decomposition operation can be controlled with parameters from the optional [param settings].
+			</description>
+		</method>
 		<method name="create_outline" qualifiers="const">
 			<return type="Mesh" />
 			<param index="0" name="margin" type="float" />
@@ -198,7 +206,8 @@
 		</method>
 	</methods>
 	<members>
-		<member name="lightmap_size_hint" type="Vector2i" setter="set_lightmap_size_hint" getter="get_lightmap_size_hint" default="Vector2i(0, 0)">
+		<member name="lightmap_size_hint" type="Vector2i" setter="set_lightmap_size_hint"
+			getter="get_lightmap_size_hint" default="Vector2i(0, 0)">
 			Sets a hint to be used for lightmap resolution.
 		</member>
 	</members>
@@ -355,22 +364,28 @@
 		<constant name="ARRAY_COMPRESS_FLAGS_BASE" value="25" enum="ArrayFormat" is_bitfield="true">
 			Shift of first compress flag. Compress flags should be passed to [method ArrayMesh.add_surface_from_arrays] and [method SurfaceTool.commit].
 		</constant>
-		<constant name="ARRAY_FLAG_USE_2D_VERTICES" value="33554432" enum="ArrayFormat" is_bitfield="true">
+		<constant name="ARRAY_FLAG_USE_2D_VERTICES" value="33554432" enum="ArrayFormat"
+			is_bitfield="true">
 			Flag used to mark that the array contains 2D vertices.
 		</constant>
-		<constant name="ARRAY_FLAG_USE_DYNAMIC_UPDATE" value="67108864" enum="ArrayFormat" is_bitfield="true">
+		<constant name="ARRAY_FLAG_USE_DYNAMIC_UPDATE" value="67108864" enum="ArrayFormat"
+			is_bitfield="true">
 			Flag used to mark that the mesh data will use [code]GL_DYNAMIC_DRAW[/code] on GLES. Unused on Vulkan.
 		</constant>
-		<constant name="ARRAY_FLAG_USE_8_BONE_WEIGHTS" value="134217728" enum="ArrayFormat" is_bitfield="true">
+		<constant name="ARRAY_FLAG_USE_8_BONE_WEIGHTS" value="134217728" enum="ArrayFormat"
+			is_bitfield="true">
 			Flag used to mark that the mesh contains up to 8 bone influences per vertex. This flag indicates that [constant ARRAY_BONES] and [constant ARRAY_WEIGHTS] elements will have double length.
 		</constant>
-		<constant name="ARRAY_FLAG_USES_EMPTY_VERTEX_ARRAY" value="268435456" enum="ArrayFormat" is_bitfield="true">
+		<constant name="ARRAY_FLAG_USES_EMPTY_VERTEX_ARRAY" value="268435456" enum="ArrayFormat"
+			is_bitfield="true">
 			Flag used to mark that the mesh intentionally contains no vertex array.
 		</constant>
-		<constant name="ARRAY_FLAG_COMPRESS_ATTRIBUTES" value="536870912" enum="ArrayFormat" is_bitfield="true">
+		<constant name="ARRAY_FLAG_COMPRESS_ATTRIBUTES" value="536870912" enum="ArrayFormat"
+			is_bitfield="true">
 			Flag used to mark that a mesh is using compressed attributes (vertices, normals, tangents, UVs). When this form of compression is enabled, vertex positions will be packed into an RGBA16UNORM attribute and scaled in the vertex shader. The normal and tangent will be packed into an RG16UNORM representing an axis, and a 16-bit float stored in the A-channel of the vertex. UVs will use 16-bit normalized floats instead of full 32-bit signed floats. When using this compression mode you must use either vertices, normals, and tangents or only vertices. You cannot use normals without tangents. Importers will automatically enable this compression if they can.
 		</constant>
-		<constant name="ARRAY_FLAG_USE_STORAGE_BUFFER" value="1073741824" enum="ArrayFormat" is_bitfield="true">
+		<constant name="ARRAY_FLAG_USE_STORAGE_BUFFER" value="1073741824" enum="ArrayFormat"
+			is_bitfield="true">
 			Flag used to mark that the surface's vertex, attribute, skin, and index buffers must be created with the storage-buffer usage bit so they can be bound as storage buffers in compute shaders. This is required to write into them from a compute pipeline through the [RID]s returned by [method RenderingServer.mesh_surface_get_vertex_buffer_rd_rid] and the matching methods for the attribute, skin, and index buffers. Has no effect on the OpenGL backend, which does not expose [RenderingDevice] [RID]s.
 		</constant>
 		<constant name="BLEND_SHAPE_MODE_NORMALIZED" value="0" enum="BlendShapeMode">
