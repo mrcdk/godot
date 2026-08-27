@@ -2748,7 +2748,7 @@ void RenderForwardMobile::GeometryInstanceForwardMobile::set_use_lightmap(RID p_
 	_mark_dirty();
 }
 
-void RenderForwardMobile::GeometryInstanceForwardMobile::set_lightmap_capture(const Color *p_sh9) {
+void RenderForwardMobile::GeometryInstanceForwardMobile::set_lightmap_capture(const Color *p_sh9, const bool p_uses_shadowmask) {
 	if (p_sh9) {
 		if (lightmap_sh == nullptr) {
 			lightmap_sh = RenderForwardMobile::get_singleton()->geometry_instance_lightmap_sh.alloc();

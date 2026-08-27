@@ -1478,16 +1478,10 @@ uniform lowp sampler2DArray shadowmask_textures; //texunit:-5
 uniform lowp uint lightmap_slice;
 uniform highp vec4 lightmap_uv_scale;
 uniform float lightmap_exposure_normalization;
-uniform uint lightmap_shadowmask_mode;
 
 #ifdef USE_LIGHTMAP_SPECULAR
 uniform float lightmap_specular_intensity;
 #endif
-
-#define SHADOWMASK_MODE_NONE uint(0)
-#define SHADOWMASK_MODE_REPLACE uint(1)
-#define SHADOWMASK_MODE_OVERLAY uint(2)
-#define SHADOWMASK_MODE_ONLY uint(3)
 
 #ifdef LIGHTMAP_BICUBIC_FILTER
 uniform highp vec2 lightmap_texture_size;
@@ -1501,6 +1495,15 @@ uniform mediump mat3 lightmap_normal_xform;
 #ifdef USE_LIGHTMAP_CAPTURE
 uniform mediump vec4[9] lightmap_captures;
 #endif // USE_LIGHTMAP_CAPTURE
+#if defined(USE_LIGHTMAP) || defined(USE_LIGHTMAP_CAPTURE)
+
+#define SHADOWMASK_MODE_NONE uint(0)
+#define SHADOWMASK_MODE_REPLACE uint(1)
+#define SHADOWMASK_MODE_OVERLAY uint(2)
+#define SHADOWMASK_MODE_ONLY uint(3)
+
+uniform uint lightmap_shadowmask_mode;
+#endif // USE_LIGHTMAP || USE_LIGHTMAP_CAPTURE
 #endif // !DISABLE_LIGHTMAP
 
 #ifdef USE_MULTIVIEW
@@ -2992,10 +2995,14 @@ void main() {
 #if !defined(ADDITIVE_OMNI) && !defined(ADDITIVE_SPOT)
 
 #ifndef SHADOWS_DISABLED
-// Baked shadowmasks
-#ifdef USE_LIGHTMAP
+	// Baked shadowmasks
 	float shadowmask = 1.0f;
 
+#if defined(USE_LIGHTMAP_CAPTURE)
+	if (lightmap_shadowmask_mode != SHADOWMASK_MODE_NONE) {
+		shadowmask = pow(2.0, 10.0 * (lightmap_captures[0].w - 1.0));
+	}
+#elif defined(USE_LIGHTMAP)
 	if (lightmap_shadowmask_mode != SHADOWMASK_MODE_NONE) {
 		vec3 uvw;
 		uvw.xy = uv2 * lightmap_uv_scale.zw + lightmap_uv_scale.xy;
@@ -3011,7 +3018,7 @@ void main() {
 
 	float directional_shadow = 1.0;
 
-#ifdef USE_LIGHTMAP
+#if defined(USE_LIGHTMAP) || defined(USE_LIGHTMAP_CAPTURE)
 	if (lightmap_shadowmask_mode != SHADOWMASK_MODE_ONLY) {
 #endif
 
@@ -3116,7 +3123,7 @@ void main() {
 
 #endif //LIGHT_USE_PSSM4
 
-#ifdef USE_LIGHTMAP
+#if defined(USE_LIGHTMAP) || defined(USE_LIGHTMAP_CAPTURE)
 		if (lightmap_shadowmask_mode == SHADOWMASK_MODE_REPLACE) {
 			directional_shadow = mix(directional_shadow, shadowmask, smoothstep(directional_shadows[directional_shadow_index].fade_from, directional_shadows[directional_shadow_index].fade_to, vertex.z));
 		} else if (lightmap_shadowmask_mode == SHADOWMASK_MODE_OVERLAY) {
@@ -3124,7 +3131,7 @@ void main() {
 		} else {
 #endif
 			directional_shadow = mix(directional_shadow, 1.0, smoothstep(directional_shadows[directional_shadow_index].fade_from, directional_shadows[directional_shadow_index].fade_to, vertex.z));
-#ifdef USE_LIGHTMAP
+#if defined(USE_LIGHTMAP) || defined(USE_LIGHTMAP_CAPTURE)
 		}
 
 	} else { // lightmap_shadowmask_mode == SHADOWMASK_MODE_ONLY

@@ -1138,6 +1138,14 @@ void main() {
 		}
 	}
 
+#ifdef USE_SHADOWMASK
+	vec3 light;
+	vec3 light_dir;
+	float shadow;
+	trace_direct_light(position, vec3(0, 1, 0), bake_params.shadowmask_light_idx, false, light, light_dir, noise, 0.0, shadow);
+	probe_sh_accum[0].w = shadow;
+#endif
+
 	for (uint j = 0; j < 9; j++) { //accum from existing
 		light_probes.data[probe_index * 9 + j] = probe_sh_accum[j];
 	}

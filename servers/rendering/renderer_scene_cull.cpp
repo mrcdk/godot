@@ -38,6 +38,7 @@
 #include "servers/rendering/rendering_light_culler.h"
 #include "servers/rendering/rendering_server.h"
 #include "servers/rendering/rendering_server_default.h"
+#include "servers/rendering/rendering_server_enums.h"
 
 #ifndef XR_DISABLED
 #include "servers/xr/xr_interface.h"
@@ -740,7 +741,7 @@ void RendererSceneCull::instance_set_base(RID p_instance, RID p_base) {
 				geom->geometry_instance->set_instance_shader_uniforms_offset(instance->instance_uniforms.location());
 				geom->geometry_instance->set_cast_double_sided_shadows(instance->cast_shadows == RSE::SHADOW_CASTING_SETTING_DOUBLE_SIDED);
 				if (instance->lightmap_sh.size() == 9) {
-					geom->geometry_instance->set_lightmap_capture(instance->lightmap_sh.ptr());
+					geom->geometry_instance->set_lightmap_capture(instance->lightmap_sh.ptr(), instance->uses_shadowmask);
 				}
 
 				for (Instance *E : instance->visibility_dependencies) {
@@ -1722,7 +1723,7 @@ void RendererSceneCull::_update_instance(Instance *p_instance) const {
 				p_instance->lightmap_sh.clear(); //don't need SH
 				p_instance->lightmap_target_sh.clear(); //don't need SH
 				ERR_FAIL_NULL(geom->geometry_instance);
-				geom->geometry_instance->set_lightmap_capture(nullptr);
+				geom->geometry_instance->set_lightmap_capture(nullptr, false);
 			}
 		}
 
@@ -2065,6 +2066,7 @@ void RendererSceneCull::_update_instance_lightmap_captures(Instance *p_instance)
 	bool inside = false;
 	Color accum_sh[9];
 	float accum_blend = 0.0;
+	bool uses_shadowmask = false;
 
 	InstanceGeometryData *geom = static_cast<InstanceGeometryData *>(p_instance->base_data);
 	// Don't blend if only one lightmap affects the dynamic object.
@@ -2075,6 +2077,11 @@ void RendererSceneCull::_update_instance_lightmap_captures(Instance *p_instance)
 		Instance *lightmap = E;
 
 		bool interior = RSG::light_storage->lightmap_is_interior(lightmap->base);
+
+		if (!uses_shadowmask) {
+			RSE::ShadowmaskMode shadowmask_mode = RSG::light_storage->lightmap_get_shadowmask_mode(lightmap->base);
+			uses_shadowmask = shadowmask_mode != RSE::ShadowmaskMode::SHADOWMASK_MODE_NONE;
+		}
 
 		if (inside && !interior) {
 			continue; //we are inside, ignore exteriors
@@ -2089,7 +2096,7 @@ void RendererSceneCull::_update_instance_lightmap_captures(Instance *p_instance)
 
 		Color sh[9];
 		RSG::light_storage->lightmap_tap_sh_light(lightmap->base, lm_pos, sh);
-
+		print_line("tap sh", sh[0]);
 		//rotate it
 		Basis rot = lightmap->transform.basis.orthonormalized();
 		for (int i = 0; i < 3; i++) {
@@ -2125,6 +2132,7 @@ void RendererSceneCull::_update_instance_lightmap_captures(Instance *p_instance)
 			for (int j = 0; j < 9; j++) {
 				accum_sh[j] += sh[j] * blend;
 			}
+			accum_sh[0].a = sh[0].a * blend;
 			accum_blend += blend;
 		}
 	}
@@ -2138,8 +2146,10 @@ void RendererSceneCull::_update_instance_lightmap_captures(Instance *p_instance)
 		}
 	}
 
+	p_instance->uses_shadowmask = uses_shadowmask;
+
 	ERR_FAIL_NULL(geom->geometry_instance);
-	geom->geometry_instance->set_lightmap_capture(p_instance->lightmap_sh.ptr());
+	geom->geometry_instance->set_lightmap_capture(p_instance->lightmap_sh.ptr(), uses_shadowmask);
 }
 
 void RendererSceneCull::_light_instance_setup_directional_shadow(int p_shadow_index, Instance *p_instance, const Transform3D p_cam_transform, const Projection &p_cam_projection, bool p_cam_orthogonal, bool p_cam_vaspect) {
@@ -3232,7 +3242,7 @@ void RendererSceneCull::_scene_cull(CullData &cull_data, InstanceCullResult &cul
 						}
 						ERR_FAIL_NULL(geom->geometry_instance);
 						cull_data.cull->lock.lock();
-						geom->geometry_instance->set_lightmap_capture(sh);
+						geom->geometry_instance->set_lightmap_capture(sh, idata.instance->uses_shadowmask);
 						cull_data.cull->lock.unlock();
 						idata.instance->last_frame_pass = frame_number;
 					}

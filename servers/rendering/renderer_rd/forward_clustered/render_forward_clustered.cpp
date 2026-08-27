@@ -4953,7 +4953,7 @@ void RenderForwardClustered::GeometryInstanceForwardClustered::set_use_lightmap(
 	_mark_dirty();
 }
 
-void RenderForwardClustered::GeometryInstanceForwardClustered::set_lightmap_capture(const Color *p_sh9) {
+void RenderForwardClustered::GeometryInstanceForwardClustered::set_lightmap_capture(const Color *p_sh9, const bool p_uses_shadowmask) {
 	if (p_sh9) {
 		if (lightmap_sh == nullptr) {
 			lightmap_sh = RenderForwardClustered::get_singleton()->geometry_instance_lightmap_sh.alloc();

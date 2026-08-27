@@ -429,6 +429,7 @@ public:
 		bool baked_light : 1; // This flag is only to know if it actually did use baked light.
 		bool dynamic_gi : 1; // Same as above for dynamic objects.
 		bool redraw_if_visible : 1;
+		bool uses_shadowmask : 1;
 
 		Instance *lightmap = nullptr;
 		Rect2 lightmap_uv_scale;
@@ -570,6 +571,7 @@ public:
 			baked_light = true;
 			dynamic_gi = false;
 			redraw_if_visible = false;
+			uses_shadowmask = false;
 
 			lightmap_slice_index = 0;
 			lightmap = nullptr;
@@ -622,6 +624,7 @@ public:
 		bool material_is_animated;
 		uint32_t projector_count = 0;
 		uint32_t softshadow_count = 0;
+		RSE::ShadowmaskMode shadowmask_mode = RSE::SHADOWMASK_MODE_NONE;
 
 		HashSet<Instance *> decals;
 		HashSet<Instance *> reflection_probes;
